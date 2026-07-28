@@ -147,9 +147,11 @@
      There is no why_it_matters column with real content in the current
      schema (it is never populated by the manual-pilot import path) —
      the old renderer's fallback text was therefore shown for every
-     analysis ever saved. Per the ticket: build "Why this matters to
-     MetroTex" from EXISTING stored fields only — no new prose generated
-     at runtime, no new database field invented. */
+     analysis ever saved. Per the ticket: build "Why This Matters" from
+     EXISTING stored fields only — no new prose generated at runtime, no
+     new database field invented, and no organization name hardcoded
+     into product-shell language (Watchdog EWS is an independent
+     product; the operating organization is not the product identity). */
   function whyThisMattersEntries(analysis) {
     const entries = [];
     if (hasVal(analysis && analysis.organizational_relevance)) {

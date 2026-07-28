@@ -7,9 +7,13 @@
 // V8 rule:
 //   - Opening a signal = viewed only. viewSignal() never changes state.
 //   - Explicitly choosing "Mark Reviewed" = reviewed. applyMarkReviewed().
-//   - Saving a substantive workflow decision may also mark Reviewed, as
-//     a side effect, but only if the signal wasn't already reviewed.
-//     applyReviewedOnSubstantiveSave().
+//   - Saving a workflow decision marks Reviewed as a side effect ONLY
+//     when the save actually changed at least one substantive field
+//     (Status, Response Level, Operator Note, Next Action, Follow-Up
+//     Date, Dismissal Reason) — never merely because Save was clicked.
+//     applyReviewedOnSubstantiveSave() takes that yes/no as an explicit
+//     argument; the caller (dashboard.js) computes it from the real
+//     field diff via describeWorkflowChanges(), never guesses.
 //   - Every transition here is idempotent: calling any of these on an
 //     already-reviewed record returns it completely unchanged (same
 //     reference identity where nothing changed) — no duplicate history
@@ -24,6 +28,30 @@
   'use strict';
 
   const DEFAULT_HISTORY_CAP = 25;
+
+  // The exact six operator-selectable fields a "substantive" workflow
+  // save can change — the same set dashboard.js's WORKFLOW_FIELD_LABELS
+  // covers for the human-readable history summary. Kept here too, as its
+  // own pure, directly-testable decision, so "was this save substantive"
+  // never has to be inferred from string-diffing spread across the DOM
+  // layer — a caller can ask this question with no signal object, no
+  // repository, no DOM at all.
+  const SUBSTANTIVE_WORKFLOW_FIELDS = ['status', 'responseLevel', 'note', 'nextAction', 'followUpDate', 'dismissalReason'];
+
+  function normalizedFieldValue(v) {
+    return v === null || v === undefined ? '' : String(v);
+  }
+
+  // True if `next` differs from `prev` on at least one of the six
+  // substantive fields. Only those six fields matter — reviewedAt,
+  // closedAt, dismissedAt, updatedAt, createdAt, and history are all
+  // derived/bookkeeping fields, never the basis for "did the operator
+  // actually decide something."
+  function hasSubstantiveWorkflowChange(prev, next) {
+    const p = prev || {};
+    const n = next || {};
+    return SUBSTANTIVE_WORKFLOW_FIELDS.some((key) => normalizedFieldValue(p[key]) !== normalizedFieldValue(n[key]));
+  }
 
   function isReviewed(wf) {
     return !!(wf && wf.reviewedAt);
@@ -52,14 +80,20 @@
     };
   }
 
-  // Saving any substantive workflow decision (Workflow Status, Response
-  // Level, Next Action, Follow-Up Date, Operator Note, Dismissal Reason)
-  // also counts as a review, per the product rule — but only sets
-  // reviewedAt if it isn't already set. Never overwrites an existing
-  // reviewedAt, and adds no history entry of its own (the caller's own
-  // field-change summary already documents what was saved).
-  function applyReviewedOnSubstantiveSave(wf, nowIso) {
+  // Saving a workflow decision counts as review too — but ONLY when
+  // hasSubstantiveChange is true, i.e. the caller already determined
+  // (from the real field diff, not from "Save was clicked") that at
+  // least one of Status/Response Level/Operator Note/Next Action/
+  // Follow-Up Date/Dismissal Reason actually changed. A no-change Save
+  // must reach this function with hasSubstantiveChange: false, or
+  // (better) never call it at all — either way this returns the record
+  // completely untouched: no reviewedAt, no new reference. Never
+  // overwrites an existing reviewedAt, and adds no history entry of its
+  // own (the caller's own field-change summary already documents what
+  // was saved).
+  function applyReviewedOnSubstantiveSave(wf, nowIso, hasSubstantiveChange) {
     if (isReviewed(wf)) return wf;
+    if (!hasSubstantiveChange) return wf;
     return { ...wf, reviewedAt: nowIso };
   }
 
@@ -68,6 +102,8 @@
     viewSignal,
     applyMarkReviewed,
     applyReviewedOnSubstantiveSave,
+    hasSubstantiveWorkflowChange,
+    SUBSTANTIVE_WORKFLOW_FIELDS,
   };
 
   if (typeof module !== 'undefined' && module.exports) {

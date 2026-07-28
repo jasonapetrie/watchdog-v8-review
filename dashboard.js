@@ -674,6 +674,9 @@ function setSaveState(state) {
   if (state === 'saving') { el.textContent = 'Saving…'; el.style.color = ''; }
   else if (state === 'saved') { el.textContent = 'Saved to your account.'; el.style.color = ''; }
   else if (state === 'error') { el.textContent = 'Could not save — check your connection and try again.'; el.style.color = '#ff9d9d'; }
+  // V8 correction: a Save that changed nothing substantive is reported
+  // honestly as a no-op, not silently treated the same as "Saved."
+  else if (state === 'nochange') { el.textContent = 'No changes to save.'; el.style.color = ''; }
 }
 
 /* Stable identity for a displayed (deduplicated) signal, reusing the
@@ -744,29 +747,36 @@ function reviewState(wf) {
    call (idempotent, no duplicate history spam on repeat clicks). Saving
    any substantive operator action (form Save) also marks Reviewed, as a
    byproduct inside saveWorkflow() below — the second of the two
-   "explicitly marked OR acted on" triggers; opening alone is neither. */
-function markReviewed(s) {
+   "explicitly marked OR acted on" triggers; opening alone is neither.
+
+   V8 correction (pre-review pass): Mark Reviewed is an explicit human
+   decision, so it is now a genuinely awaited save, not fire-and-forget —
+   this function does not touch workflowStore (the in-memory cache) or
+   resolve until the repository call actually succeeds, and it THROWS on
+   failure rather than swallowing the error into a console.error. The
+   caller (the Mark Reviewed click handler below) is what disables the
+   control, shows a Saving state, and only presents success once this
+   promise actually resolves — never optimistically. */
+async function markReviewed(s) {
   const prev = getWorkflow(s);
-  if (hasVal(prev.reviewedAt)) return prev;
+  if (hasVal(prev.reviewedAt)) return prev; // idempotent — nothing to persist, nothing changed
   const now = new Date().toISOString();
   const next = window.WatchdogReviewSemantics.applyMarkReviewed(prev, now, WORKFLOW_HISTORY_CAP);
   const key = signalIdentity(s);
-  workflowStore.records[key] = next; // optimistic — the caller re-renders from this immediately, synchronously
 
   if (!currentUserId) {
+    workflowStore.records[key] = next;
     persistWorkflowStore();
     return next;
   }
 
-  // Fire-and-forget: kept lightweight (no Saving/Saved/Error indicator,
-  // unlike saveWorkflow() below) since Mark Reviewed is a single-field
-  // bookkeeping action, not a form save. A failure here is logged and
-  // simply retried by whatever explicit save happens next.
   const repId = s.id ?? null;
-  window.WatchdogRepository.saveSignalUserState(currentUserId, key, repId, next)
-    .then(() => saveUserScopedOverflow(currentUserId, key, next))
-    .catch((err) => console.error('Could not sync Reviewed state to your account (will retry on next save):', err));
-
+  // Awaited, not fire-and-forget: workflowStore is only updated once this
+  // actually succeeds, so a failure leaves the previous (unreviewed)
+  // in-memory state completely untouched — nothing to roll back.
+  await window.WatchdogRepository.saveSignalUserState(currentUserId, key, repId, next);
+  workflowStore.records[key] = next;
+  saveUserScopedOverflow(currentUserId, key, next);
   return next;
 }
 
@@ -807,27 +817,47 @@ function describeWorkflowChanges(prev, next) {
   return out;
 }
 
+// V8 correction (pre-review pass): a Save must only ever do something —
+// mark Reviewed, bump updatedAt, add history, persist — when at least
+// one of the six substantive workflow fields actually changed. The diff
+// is computed FIRST, from the real prev/candidate values, via the same
+// describeWorkflowChanges() used for the history summary — a no-change
+// Save can never disagree with what the history would have said changed.
 async function saveWorkflow(s, patch) {
   const key = signalIdentity(s);
   const prev = getWorkflow(s);
+  const candidateNext = { ...prev, ...patch };
+  // V8 correction (pre-review pass): the diff is computed BEFORE any
+  // review semantics are applied, using the same pure, directly-tested
+  // decision reviewSemantics.js exposes for exactly this question — not
+  // inferred from "Save was clicked." describeWorkflowChanges() below is
+  // only for the human-readable history text; hasSubstantiveWorkflowChange()
+  // is the authoritative yes/no gate.
+  const hasChange = window.WatchdogReviewSemantics.hasSubstantiveWorkflowChange(prev, candidateNext);
+
+  if (!hasChange) {
+    // Nothing substantive changed: no reviewedAt, no updatedAt, no
+    // history entry, no persistence call of any kind — a true no-op.
+    setSaveState('nochange');
+    return { noChanges: true, workflow: prev };
+  }
+
   const now = new Date().toISOString();
-  const next = { ...prev, ...patch };
+  const next = { ...candidateNext };
+  const changeSummary = describeWorkflowChanges(prev, candidateNext);
   // Saving a substantive workflow decision counts as review too (V8 Part 1)
   // — opening the signal alone no longer does (see viewSignal() in
   // reviewSemantics.js, used by openDetail()). Deliberately not included in
-  // WORKFLOW_FIELD_LABELS / the diff summary below — it would otherwise add
+  // WORKFLOW_FIELD_LABELS / the diff summary above — it would otherwise add
   // a noisy "Reviewed: — → …" line to every single history entry, including
   // the very first save.
-  next.reviewedAt = window.WatchdogReviewSemantics.applyReviewedOnSubstantiveSave(prev, now).reviewedAt;
+  next.reviewedAt = window.WatchdogReviewSemantics.applyReviewedOnSubstantiveSave(prev, now, hasChange).reviewedAt;
   // Closed/Dismissed timestamps: derived, not operator-selectable, and (like
   // reviewedAt) deliberately excluded from WORKFLOW_FIELD_LABELS so they
   // don't double up with the "Status: … → Closed" history line.
   next.closedAt = next.status === 'Closed' ? (prev.status === 'Closed' ? prev.closedAt : now) : null;
   next.dismissedAt = next.status === 'Dismissed' ? (prev.status === 'Dismissed' ? prev.dismissedAt : now) : null;
-  const changeSummary = describeWorkflowChanges(prev, next);
-  next.history = changeSummary.length
-    ? [...prev.history, { at: now, summary: changeSummary.join('; ') }].slice(-WORKFLOW_HISTORY_CAP)
-    : prev.history;
+  next.history = [...prev.history, { at: now, summary: changeSummary.join('; ') }].slice(-WORKFLOW_HISTORY_CAP);
   next.updatedAt = now;
   next.createdAt = prev.createdAt || now;
 
@@ -1916,10 +1946,33 @@ function wireControls() {
     const action = btn.dataset.detailAction;
     if (action === 'Create Matter') { openMatterPicker(currentDetailSignal); return; }
     if (action === 'Mark Reviewed') {
-      const wf = markReviewed(currentDetailSignal);
+      // V8 correction (pre-review pass): a reliable, awaited save, not a
+      // silent fire-and-forget. Disabling synchronously here — before
+      // the first `await` runs — is also the double-click guard: a
+      // disabled <button> never dispatches a second click event, so a
+      // rapid repeat click on this exact element cannot race the first
+      // save or duplicate its history entry.
+      const signalBeingMarked = currentDetailSignal;
+      btn.disabled = true;
+      btn.textContent = 'Saving…';
+      let wf;
+      try {
+        wf = await markReviewed(signalBeingMarked);
+      } catch (err) {
+        console.error('Could not mark this signal Reviewed:', err);
+        // Failure: the unreviewed state was never touched (markReviewed()
+        // only updates workflowStore after the repository call succeeds),
+        // so there is nothing to roll back — just restore the control and
+        // tell the human, not only the console.
+        btn.disabled = false;
+        btn.textContent = 'Mark Reviewed';
+        showToast('Could not mark this signal Reviewed — check your connection and try again.');
+        return;
+      }
+      if (currentDetailSignal !== signalBeingMarked) return; // navigated away while saving
       refreshOverviewPanels();
       renderMain();
-      renderDetailPrimaryActions(currentDetailSignal, wf);
+      renderDetailPrimaryActions(currentDetailSignal, wf); // re-render removes the button entirely now that it's reviewed
       populateWorkflowForm(wf);
       showToast('Marked Reviewed.');
       return;
@@ -2659,10 +2712,15 @@ async function renderTodayView() {
       return r !== 0 ? r : new Date(b.detected_at || 0) - new Date(a.detected_at || 0);
     });
 
-  // 3. ACTIVE MATTERS UPDATED — real materiality only: an actual field
-  // changed (updatedAt !== createdAt), not merely touched, within the
-  // last 3 days. activeMatters() (status !== 'Resolved') excludes
-  // archived/resolved matters without deleting or otherwise touching them.
+  // 3. ACTIVE MATTERS UPDATED — updatedAt !== createdAt only tells us a
+  // field changed at some point after creation, within the last 3 days;
+  // it does NOT by itself establish that the change was material or
+  // meaningful — audit_events would be needed to say that, and this
+  // section doesn't consult it. The heading and copy stay deliberately
+  // neutral ("updated," never "material"/"meaningful") to match exactly
+  // what this filter can honestly claim. activeMatters() (status !==
+  // 'Resolved') excludes archived/resolved matters without deleting or
+  // otherwise touching them.
   const mattersUpdated = activeMatters()
     .filter((m) => hasVal(m.updatedAt) && (Date.now() - new Date(m.updatedAt).getTime()) < 3 * 86400000 && m.updatedAt !== m.createdAt)
     .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
@@ -2689,8 +2747,8 @@ async function renderTodayView() {
 
   sections.push(todaySectionHtml({
     title: 'Active Matters Updated', count: mattersUpdated.length,
-    explain: 'Active Matters with a real, recorded change in the last 3 days.',
-    emptyText: 'No Active Matters have changed in the last 3 days.',
+    explain: 'Active Matters updated within the last 3 days.',
+    emptyText: 'No Active Matters were updated in the last 3 days.',
     bodyHtml: mattersUpdated.length ? `<div class="matter-sig-list">${mattersUpdated.slice(0, 5).map((m) => todayMiniMatterRow(m)).join('')}</div>` : '',
   }));
 
@@ -4333,7 +4391,7 @@ function renderAnalysisTabContent(analysis) {
     <p class="wf-section-heading" style="margin-top:14px">Executive Summary</p>
     <p class="analysis-summary-full">${esc(AR.executiveSummaryText(analysis))}</p>` : ''}
 
-    <p class="wf-section-heading" style="margin-top:14px">Why This Matters to MetroTex</p>
+    <p class="wf-section-heading" style="margin-top:14px">Why This Matters</p>
     ${whyEntries.length ? `<dl class="dl-grid">${whyEntries.map((e) => dlRow(e.label, esc(e.text))).join('')}</dl>` : `<p class="state-detail">Not enough stored analysis to build this yet.</p>`}
 
     <dl class="analysis-areas" style="margin-top:14px">
@@ -5182,6 +5240,12 @@ async function saveWorkflowFromForm() {
     return; // form fields are left exactly as typed — nothing is reset or overwritten
   }
   saveBtn.disabled = false;
+  if (saved.noChanges) {
+    // V8 correction: nothing was persisted, so nothing here re-renders the
+    // form/overview/feed either — there is genuinely nothing to reflect.
+    populateWorkflowForm(saved.workflow);
+    return;
+  }
   populateWorkflowForm(saved);
   refreshOverviewPanels();
   renderMain();
