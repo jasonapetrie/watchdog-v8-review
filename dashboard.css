@@ -1,0 +1,948 @@
+/* ══ Tokens — validated dark palette (see dataviz skill reference) ══ */
+:root{
+  color-scheme: dark;
+  --bg:            #0d0d0d;
+  --surface:       #1a1a19;
+  --surface-2:     #212120;
+  --surface-3:     #272725;
+  --border:        rgba(255,255,255,.10);
+  --border-strong: rgba(255,255,255,.18);
+  --ink:           #ffffff;
+  --ink-secondary: #c3c2b7;
+  --ink-muted:     #898781;
+
+  --accent:        #3987e5;   /* categorical slot 1 (blue) — identity / links / monitor */
+  --accent-ink:    #eaf1fd;
+  --violet:        #9085e9;   /* categorical slot 7 — member-sourced identity */
+
+  --critical:      #d03b3b;   /* status: High priority */
+  --warning:       #fab219;   /* status: Medium priority */
+  --good:          #0ca30c;   /* status: verified source */
+
+  --focus-ring:    #6db0ff;
+
+  --radius:        10px;
+  --radius-sm:     6px;
+
+  --wf-accent:     #eda100;   /* sequential slot 4 — workflow status identity, distinct from priority hues */
+  --wf-danger:     #e34948;   /* categorical slot 8 — reset / destructive actions */
+
+  /* V6.1 spacing rhythm — a small consistent scale used by new
+     components (Today, tab strip, glossary, work products) instead of
+     ad hoc pixel values. Existing V3.x components keep their original
+     hand-tuned values untouched. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+}
+
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+/* Root cause of the V3.2 workspace-control leakage (V3.2.1 hotfix):
+   several elements toggled via the `hidden` attribute also carry a class
+   that unconditionally sets `display` (e.g. .filters-panel{display:flex},
+   .tabs{display:flex}). Per the CSS cascade, an author-origin rule always
+   beats a User-Agent-origin rule of equal importance regardless of
+   selector specificity — so the browser's own `[hidden]{display:none}`
+   default was silently losing to those class rules every time, and the
+   "hidden" panel/sub-nav kept rendering right alongside the visible one.
+   This single, deliberately `!important` rule makes `hidden` authoritative
+   again everywhere in this file, present and future — the standard fix
+   for this well-known gotcha. */
+[hidden]{display:none !important}
+body{
+  background:var(--bg);
+  color:var(--ink);
+  font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  min-height:100vh;
+  line-height:1.5;
+}
+
+a{color:var(--accent)}
+a:hover{text-decoration-thickness:2px}
+
+/* ── Focus visibility ─────────────────────────────────────────── */
+:focus{outline:none}
+:focus-visible{
+  outline:2px solid var(--focus-ring);
+  outline-offset:2px;
+  border-radius:4px;
+}
+
+/* ── Skip link ────────────────────────────────────────────────── */
+.skip-link{
+  position:absolute;left:-999px;top:0;
+  background:var(--accent);color:#fff;
+  padding:10px 16px;border-radius:0 0 8px 0;
+  z-index:1000;font-weight:600;font-size:13px;
+}
+.skip-link:focus{left:0}
+
+/* ── Header ───────────────────────────────────────────────────── */
+.hdr{
+  background:linear-gradient(135deg,#0f1e33 0%,#122a4d 100%);
+  border-bottom:1px solid var(--border);
+  padding:20px 24px;
+  display:flex;justify-content:space-between;align-items:flex-start;
+  flex-wrap:wrap;gap:14px;
+}
+/* V6.1 header refinement: "Watchdog EWS" is the large primary product
+   title; the connection pill sits beside it, visually secondary (smaller,
+   quieter treatment) even though it shares the row. "North Texas Policy
+   Tracker" is a smaller secondary instance label underneath — the long
+   geographic subtitle (counties) is no longer in the persistent header;
+   jurisdiction configuration itself is untouched and remains available
+   elsewhere in the app (Sources, filters). */
+.hdr-title-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.hdr-id h1{font-size:26px;font-weight:800;margin:0;color:var(--ink)}
+.hdr-instance{font-size:12px;font-weight:600;color:var(--ink-secondary);margin:4px 0 0;letter-spacing:.02em}
+.hdr-status{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.conn-badge{
+  display:inline-flex;align-items:center;gap:6px;
+  background:rgba(255,255,255,.08);
+  border:1px solid var(--border);
+  border-radius:20px;padding:3px 10px;
+  font-size:10.5px;font-weight:700;color:var(--ink-secondary);
+  text-transform:uppercase;letter-spacing:.04em;
+}
+.conn-dot{width:7px;height:7px;border-radius:50%;background:var(--good)}
+.hdr-meta{font-size:11.5px;color:var(--ink-muted)}
+
+/* ── Workspace menu (Today's Activity / Export / Import / Reset) ──────
+   Everything here is deliberately kept OUT of the default view (V3.1)
+   — tucked behind one compact <details> menu in the header. */
+.workspace-menu{position:relative}
+.workspace-menu > summary{list-style:none;cursor:pointer}
+.workspace-menu > summary::-webkit-details-marker{display:none}
+.workspace-menu-panel{
+  position:absolute;top:calc(100% + 6px);right:0;z-index:50;
+  width:280px;max-width:88vw;
+  background:var(--surface-2);border:1px solid var(--border-strong);
+  border-radius:var(--radius);padding:14px;
+  box-shadow:0 12px 32px rgba(0,0,0,.5);
+  display:flex;flex-direction:column;gap:8px;
+}
+.wsm-heading{
+  font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;
+  color:var(--ink-muted);margin:0;
+}
+.workspace-menu-panel .wf-history{border-top:none;padding-top:0;max-height:140px;overflow-y:auto}
+.wsm-divider{border-top:1px solid var(--border);margin:4px 0}
+.wf-tool-btn{
+  background:var(--surface);border:1px solid var(--border-strong);
+  color:var(--ink-secondary);border-radius:var(--radius-sm);
+  padding:7px 12px;font-size:12px;font-weight:600;cursor:pointer;
+  text-align:left;
+}
+.wf-tool-btn:hover{color:var(--ink);border-color:var(--ink-muted)}
+.wf-tool-danger{color:#ff9d9d;border-color:rgba(227,73,72,.4)}
+.wf-tool-danger:hover{color:#ffb3b3;border-color:rgba(227,73,72,.7)}
+.wf-tool-msg{font-size:11px;color:var(--ink-muted)}
+
+/* ── Local-only workspace notice ─────────────────────────────────── */
+.local-notice{
+  background:var(--surface-2);
+  border-bottom:1px solid var(--border);
+  padding:7px 24px;
+  font-size:11.5px;color:var(--ink-muted);
+  display:flex;align-items:center;gap:7px;
+}
+
+/* ── Intelligence overview ───────────────────────────────────────── */
+.overview{
+  display:grid;
+  grid-template-columns:repeat(6,1fr);
+  gap:1px;background:var(--border);
+  border-bottom:1px solid var(--border);
+}
+.stat{
+  background:var(--surface);
+  padding:14px 12px;
+  display:flex;flex-direction:column;gap:3px;
+}
+.stat-n{font-size:22px;font-weight:800;line-height:1;color:var(--ink)}
+.stat-l{font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-muted)}
+.s-high .stat-n{color:var(--critical)}
+.s-med  .stat-n{color:var(--warning)}
+.s-mon  .stat-n{color:var(--accent)}
+
+.section-label{
+  font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;
+  color:var(--ink-muted);margin:0 0 8px;display:flex;align-items:center;gap:8px;
+}
+.wf-local-tag{
+  font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;
+  color:var(--wf-accent);border:1px solid rgba(237,161,0,.4);
+  border-radius:999px;padding:1px 7px;
+}
+
+/* ── Review Progress — compact (V3.1: Today's Activity moved to the
+   Workspace menu, so this no longer shares a two-column row and the
+   empty second column that used to leave a gap on mobile is gone). ── */
+.rp-panel{
+  background:var(--surface);border-bottom:1px solid var(--border);
+  padding:10px 24px 12px;
+}
+.rp-bar-wrap{background:var(--surface-2);border-radius:999px;height:7px;overflow:hidden;margin-bottom:6px}
+.rp-bar-fill{background:var(--good);height:100%;border-radius:999px}
+/* The bar + reviewed-total statement carry the clearest emphasis in this
+   section (V3.2 §8) — everything else (the metric tiles below) is
+   intentionally smaller/quieter. */
+.rp-bar-label{font-size:12.5px;font-weight:700;color:var(--ink);margin:0 0 8px}
+.rp-metrics{display:flex;flex-wrap:wrap;gap:6px}
+.rp-metric{
+  background:var(--surface-2);border:1px solid var(--border-strong);
+  border-radius:var(--radius-sm);padding:6px 9px;cursor:pointer;
+  display:flex;flex-direction:column;gap:1px;min-width:74px;text-align:left;
+}
+.rp-metric:hover{border-color:var(--ink-muted)}
+.rp-metric-n{font-size:14px;font-weight:800;color:var(--ink)}
+.rp-metric-l{font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-muted)}
+/* A zero shouldn't visually compete with metrics that have something to
+   report — e.g. Matters Updated Today must not dominate at 0 (V3.2 §8). */
+.rp-metric-zero{opacity:.5;background:transparent;border-style:dashed}
+.rp-metric-zero .rp-metric-n{font-weight:600}
+
+/* ── Primary workspace navigation ────────────────────────────────── */
+.primary-nav{
+  display:flex;gap:2px;background:var(--surface-2);
+  padding:18px 24px 0;flex-wrap:wrap;
+}
+.pnav-tab{
+  padding:10px 16px;border:none;background:none;cursor:pointer;
+  color:var(--ink-secondary);font-size:13px;font-weight:700;
+  border-bottom:2px solid transparent;border-radius:6px 6px 0 0;
+}
+.pnav-tab.active{color:var(--ink);background:var(--surface-3);border-bottom-color:var(--wf-accent)}
+.pnav-tab:hover:not(.active){color:var(--ink)}
+.nav-subtitle{
+  margin:0;background:var(--surface-2);border-bottom:1px solid var(--border);
+  padding:0 24px 12px;font-size:12px;color:var(--ink-muted);
+}
+
+/* ── Attention Center ─────────────────────────────────────────────── */
+.attn-back-bar{margin-bottom:12px}
+.attn-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.attn-tile{
+  background:var(--surface);border:1px solid var(--border-strong);border-radius:var(--radius);
+  padding:16px;text-align:left;cursor:pointer;display:flex;flex-direction:column;gap:4px;
+}
+.attn-tile:hover{border-color:var(--wf-accent);background:var(--surface-2)}
+.attn-tile-n{font-size:26px;font-weight:800;color:var(--ink)}
+.attn-tile-l{font-size:12px;font-weight:600;color:var(--ink-secondary)}
+
+/* ── Attention summary (Signals screen only, nonzero queues only) ─── */
+.attn-summary-wrap{margin-bottom:14px}
+.attn-summary{display:flex;flex-wrap:wrap;gap:6px}
+.attn-pill{
+  display:inline-flex;align-items:center;gap:6px;
+  background:var(--surface-2);border:1px solid var(--border-strong);
+  border-radius:999px;padding:5px 12px 5px 6px;cursor:pointer;
+  color:var(--ink-secondary);font-size:11.5px;font-weight:600;
+}
+.attn-pill:hover{color:var(--ink);border-color:var(--wf-accent)}
+.attn-pill-n{
+  background:var(--surface-3);color:var(--ink);font-weight:800;font-size:11px;
+  border-radius:999px;padding:1px 7px;
+}
+/* Amber emphasis for Action Required; red emphasis ONLY for overdue
+   follow-ups — every other queue (including ordinary unreviewed
+   signals) stays neutral (V3.2 §9). */
+.attn-pill-amber{border-color:rgba(237,161,0,.5)}
+.attn-pill-amber .attn-pill-n{background:var(--wf-accent);color:#241a00}
+.attn-pill-red{border-color:rgba(227,73,72,.5)}
+.attn-pill-red .attn-pill-n{background:var(--critical);color:#fff}
+
+/* ── Feed head with an extra action button (Policy Matters) ───────── */
+.feed-head-left{display:flex;align-items:baseline;gap:8px}
+
+/* ── Policy Matter dialog rows ────────────────────────────────────── */
+.matter-sig-row,.matter-pick-row,.matter-link-row{
+  display:flex;justify-content:space-between;align-items:center;gap:10px;
+  padding:9px 0;border-bottom:1px solid var(--border);
+}
+.matter-sig-row:last-child,.matter-pick-row:last-child,.matter-link-row:last-child{border-bottom:none}
+.matter-sig-title{font-size:12.5px;font-weight:600;color:var(--ink);margin:0 0 4px;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.matter-sig-meta{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.matter-sig-actions{display:flex;gap:6px;flex-shrink:0}
+
+/* ── Layout ───────────────────────────────────────────────────── */
+.layout{
+  display:flex;gap:18px;
+  padding:18px 24px 40px;
+  max-width:1400px;margin:0 auto;
+  align-items:flex-start;
+}
+.filters-panel{
+  flex:0 0 260px;min-width:230px;
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  padding:16px;
+  position:sticky;top:18px;
+  display:flex;flex-direction:column;gap:14px;
+}
+.feed{flex:1;min-width:0}
+
+/* Mobile-only "Filters" drawer trigger (V3.2 §7) — hidden on desktop,
+   where the rail is already visible. */
+.mobile-filters-btn{
+  display:none;
+  background:var(--surface);border:1px solid var(--border-strong);
+  color:var(--ink);border-radius:var(--radius-sm);
+  padding:10px 14px;font-size:13px;font-weight:700;cursor:pointer;
+  width:100%;margin-bottom:12px;text-align:left;
+}
+.mobile-filters-close{display:none}
+
+/* ── Filter controls ──────────────────────────────────────────── */
+.tabs{display:flex;gap:3px;background:var(--surface-2);padding:3px;border-radius:8px}
+.tab{
+  flex:1;padding:6px 8px;border-radius:6px;border:none;
+  background:none;color:var(--ink-secondary);
+  font-size:12px;font-weight:600;cursor:pointer;
+}
+.tab.active{background:var(--surface-3);color:var(--ink)}
+.tab:hover:not(.active){color:var(--ink)}
+
+.field{display:flex;flex-direction:column;gap:5px}
+.field label{font-size:11px;font-weight:600;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.04em}
+.field input, .field select{
+  background:var(--surface-2);
+  border:1px solid var(--border-strong);
+  color:var(--ink);
+  border-radius:var(--radius-sm);
+  padding:8px 9px;
+  font-size:13px;
+  font-family:inherit;
+}
+.field input::placeholder{color:var(--ink-muted)}
+.field-grid{display:flex;flex-direction:column;gap:12px}
+
+/* ── More Filters (collapsed advanced filters) ─────────────────── */
+.more-filters{border-top:1px solid var(--border);padding-top:12px}
+.more-filters-toggle{
+  list-style:none;cursor:pointer;
+  display:flex;align-items:center;gap:6px;
+  font-size:12px;font-weight:600;color:var(--ink-secondary);
+}
+.more-filters-toggle::-webkit-details-marker{display:none}
+.more-filters-toggle::before{content:"▸";font-size:10px;color:var(--ink-muted)}
+.more-filters[open] .more-filters-toggle::before{content:"▾"}
+.more-filters .field-grid{margin-top:12px}
+.filter-dot{
+  display:inline-flex;align-items:center;justify-content:center;
+  min-width:16px;height:16px;padding:0 4px;border-radius:999px;
+  background:var(--wf-accent);color:#241a00;
+  font-size:10px;font-weight:800;line-height:1;
+}
+
+.reset-btn{
+  background:var(--surface-2);
+  border:1px solid var(--border-strong);
+  color:var(--ink-secondary);
+  border-radius:var(--radius-sm);
+  padding:8px 10px;
+  font-size:12.5px;font-weight:600;
+  cursor:pointer;
+}
+.reset-btn:hover{color:var(--ink);border-color:var(--ink-muted)}
+
+/* V5 Source Coverage — an always-visible inline filter bar rather than
+   the shared sidebar .filters-panel (this view has no matter/signal-
+   shaped equivalent to share state with). */
+.sc-filters{
+  display:flex;flex-wrap:wrap;gap:8px;
+  margin-bottom:14px;
+}
+.sc-filters input, .sc-filters select{
+  background:var(--surface-2);
+  border:1px solid var(--border-strong);
+  color:var(--ink);
+  border-radius:var(--radius-sm);
+  padding:7px 9px;
+  font-size:12.5px;
+  font-family:inherit;
+}
+.sc-filters input{min-width:180px;flex:1 1 180px}
+
+/* ── Feed ─────────────────────────────────────────────────────── */
+.feed-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px;gap:8px}
+.feed-head h2{font-size:14px;font-weight:700;margin:0;color:var(--ink)}
+.feed-count{font-size:12px;color:var(--ink-muted)}
+.sig-list{display:flex;flex-direction:column;gap:8px}
+
+/* ── Signal card ──────────────────────────────────────────────────
+   Outer .sig is a non-interactive container (so it can hold the
+   open-detail button AND the quick-action buttons as siblings, never
+   nested — a <button> inside a <button> is invalid HTML). V3.1 keeps
+   the default card to Priority/Jurisdiction/Title/Source/age/status
+   only — no extra background boxes, no inner shadow panels. */
+.sig{
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-left:3px solid var(--border-strong);
+  border-radius:var(--radius);
+  overflow:hidden;
+}
+.sig.p-High{border-left-color:var(--critical)}
+.sig.p-Medium{border-left-color:var(--warning)}
+.sig.p-Monitor{border-left-color:var(--accent)}
+
+.sig-open{
+  display:block;width:100%;padding:13px 14px;
+  background:none;border:none;color:inherit;font:inherit;
+  text-align:left;cursor:pointer;
+}
+.sig-open:hover{background:var(--surface-2)}
+
+/* Primary action + compact "More" menu (native <details>, no custom
+   popover/overlay code and no filled background box behind it). */
+.sig-actions-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:0 14px 12px}
+.qa-btn{
+  background:var(--surface-2);border:1px solid var(--border-strong);
+  color:var(--ink-secondary);border-radius:var(--radius-sm);
+  padding:6px 11px;font-size:11px;font-weight:600;cursor:pointer;
+  min-height:30px;
+}
+.qa-btn:hover{color:var(--ink);border-color:var(--ink-muted)}
+.qa-danger{color:#ff9d9d;border-color:rgba(227,73,72,.35)}
+.qa-danger:hover{color:#ffb3b3;border-color:rgba(227,73,72,.6)}
+/* Primary (spotlighted) action: filled, colored by the action's own
+   identity — Set Monitoring blue, Action Required amber — never both
+   filled at once, since only one is ever primary per card (V3.2 §5). */
+.qa-primary{font-weight:700}
+.qa-primary:hover{filter:brightness(1.08)}
+.qa-set-monitoring{background:var(--accent);color:#fff;border-color:var(--accent)}
+.qa-action-required{background:var(--wf-accent);color:#241a00;border-color:var(--wf-accent)}
+.card-more{display:inline-block}
+.card-more > summary{list-style:none}
+.card-more > summary::-webkit-details-marker{display:none}
+.card-more-list{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+
+.sig-top{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:6px}
+.badge{
+  font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;
+  text-transform:uppercase;letter-spacing:.03em;line-height:1.6;
+}
+.b-High{background:rgba(208,59,59,.18);color:#ff8f8f}
+.b-Medium{background:rgba(250,178,25,.16);color:#ffc94d}
+.b-Monitor{background:rgba(57,135,229,.18);color:#8cbdf5}
+.tier{
+  font-size:10px;font-weight:700;color:var(--ink-muted);
+  border:1px solid var(--border-strong);border-radius:4px;padding:1px 6px;
+  font-variant-numeric:tabular-nums;
+}
+.sig-juris{font-size:12.5px;font-weight:700;color:var(--ink)}
+.sig-county{font-size:10.5px;color:var(--ink-muted)}
+.sig-date{font-size:10.5px;color:var(--ink-muted);margin-left:auto;white-space:nowrap}
+
+/* Graceful multi-line truncation (word-boundary wrap, never a mid-word
+   cut) instead of a hard character-count slice — see displayHeadline()
+   in dashboard.js. The title attribute carries the full text for anyone
+   whose headline still overflows 3 lines. */
+.sig-title{font-size:13px;color:var(--ink);margin:0 0 3px;font-weight:600;
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.sig-snip{font-size:12px;color:var(--ink-secondary);margin:0 0 7px;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.sig-source{font-size:10.5px;color:var(--ink-muted);margin:0;font-weight:500}
+
+.sig-meta-row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.chip{
+  font-size:10.5px;color:var(--ink-muted);
+  border:1px solid var(--border);border-radius:4px;
+  padding:2px 7px;
+}
+.chip-good{color:#7be07b;border-color:rgba(12,163,12,.4)}
+.chip-violet{color:#c3bdf5;border-color:rgba(144,133,233,.4)}
+.chip-unreviewed{color:var(--wf-accent);border-color:rgba(237,161,0,.4)}
+
+/* ── Workflow status badges (deliberately distinct from priority hues) ── */
+.wf-badge{
+  font-size:10px;font-weight:700;padding:2px 8px;border-radius:5px;
+  color:var(--wf-accent);border:1px solid rgba(237,161,0,.45);
+  background:rgba(237,161,0,.10);
+  text-transform:uppercase;letter-spacing:.03em;line-height:1.6;
+}
+.wf-badge-action{
+  background:var(--wf-accent);color:#241a00;border-color:var(--wf-accent);
+  font-weight:800;
+}
+.wf-badge-overdue{
+  font-size:10px;font-weight:700;padding:2px 8px;border-radius:5px;
+  color:#ff9d9d;border:1px solid rgba(227,73,72,.5);background:rgba(227,73,72,.12);
+  text-transform:uppercase;letter-spacing:.03em;line-height:1.6;
+}
+.sig.wf-action-required{border-color:rgba(237,161,0,.6)}
+
+/* ── States ───────────────────────────────────────────────────── */
+.state{text-align:center;padding:48px 20px;color:var(--ink-muted)}
+.state p{margin:8px 0 0;font-size:13.5px}
+.state.error{color:#ff8f8f}
+.state .state-detail{font-size:11.5px;color:var(--ink-muted);margin-top:6px;word-break:break-word}
+.spinner{
+  width:26px;height:26px;margin:0 auto;
+  border:3px solid var(--border-strong);
+  border-top-color:var(--accent);
+  border-radius:50%;
+}
+@media (prefers-reduced-motion: no-preference){
+  .spinner{animation:spin .8s linear infinite}
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+.state-btn{
+  margin-top:10px;background:var(--surface-2);border:1px solid var(--border-strong);
+  color:var(--ink);border-radius:var(--radius-sm);padding:7px 14px;font-size:12.5px;
+  font-weight:600;cursor:pointer;
+}
+
+/* ── Toast ────────────────────────────────────────────────────── */
+.toast{
+  position:fixed;bottom:18px;right:18px;max-width:320px;
+  background:var(--surface-3);color:var(--ink);
+  border:1px solid var(--border-strong);
+  padding:10px 14px;border-radius:8px;
+  font-size:12.5px;font-weight:500;
+  opacity:0;pointer-events:none;
+  transition:opacity .2s;
+  z-index:900;
+}
+.toast.show{opacity:1}
+
+/* ── Detail dialog ────────────────────────────────────────────── */
+.detail-dialog{
+  background:var(--surface);color:var(--ink);
+  border:1px solid var(--border-strong);border-radius:var(--radius);
+  padding:0;width:min(680px,92vw);max-height:85vh;
+  box-shadow:0 20px 60px rgba(0,0,0,.5);
+}
+/* Signal Intelligence Workspace only (not the smaller confirm/picker
+   dialogs, which stay at the compact width above): ~75-85% of viewport
+   on standard desktop/laptop screens, sensible cap so it never sprawls
+   edge-to-edge on very wide monitors. A professional issue-brief width,
+   not a narrow settings-modal width. Narrow/mobile behavior (92vw,
+   stacked columns) is unchanged from the base rule above. */
+@media(min-width:900px){
+  #detailDialog.detail-dialog{width:min(80vw,1180px)}
+}
+.detail-dialog::backdrop{background:rgba(0,0,0,.6)}
+.detail-head{
+  display:flex;justify-content:space-between;align-items:center;gap:12px;
+  padding:16px 18px;border-bottom:1px solid var(--border);
+  position:sticky;top:0;background:var(--surface);
+}
+.detail-head h2{font-size:15px;margin:0;font-weight:700}
+.detail-close{
+  background:var(--surface-2);border:1px solid var(--border-strong);
+  color:var(--ink-secondary);width:30px;height:30px;border-radius:8px;
+  cursor:pointer;font-size:14px;flex-shrink:0;
+}
+.detail-close:hover{color:var(--ink)}
+.detail-body{padding:16px 18px 20px;overflow-y:auto;max-height:calc(85vh - 102px)}
+.dl-row{display:flex;flex-direction:column;gap:2px;margin-bottom:12px}
+.dl-row dt{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-muted)}
+.dl-row dd{font-size:13px;margin:0;color:var(--ink);line-height:1.6}
+.dl-badges{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+
+/* Signal Intelligence / Source and Detection (V3.2 §11) — a subtle
+   divider only BETWEEN sections, never above the first one. Fields pair
+   into two columns on desktop where there's room; one column on mobile. */
+.dl-section + .dl-section{margin-top:18px;padding-top:16px;border-top:1px dashed var(--border-strong)}
+.dl-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px 16px}
+.dl-grid .dl-row{margin-bottom:8px}
+.source-link{
+  display:inline-flex;align-items:center;gap:5px;
+  background:var(--accent);color:#fff;
+  border-radius:var(--radius-sm);padding:8px 14px;
+  font-size:12.5px;font-weight:700;margin-top:6px;
+}
+.source-link:hover{text-decoration:none;filter:brightness(1.08)}
+.chips{display:flex;flex-wrap:wrap;gap:5px}
+
+/* ── Operator workflow form (inside detail dialog, local only) ────── */
+.wf-section{
+  margin-top:18px;padding-top:16px;
+  border-top:1px dashed var(--border-strong);
+}
+.wf-section-heading{
+  font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;
+  color:var(--ink-muted);margin:0 0 12px;display:flex;align-items:center;gap:8px;
+}
+.wf-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+.wf-section textarea{
+  background:var(--surface-2);border:1px solid var(--border-strong);color:var(--ink);
+  border-radius:var(--radius-sm);padding:8px 9px;font-size:13px;font-family:inherit;resize:vertical;
+}
+.wf-section .field{margin-bottom:12px}
+#wfDismissalWrap.wf-optional{opacity:.55}
+.wf-required-hint{font-size:10px;font-weight:500;text-transform:none;color:var(--ink-muted)}
+.wf-error{
+  background:rgba(227,73,72,.12);border:1px solid rgba(227,73,72,.4);
+  color:#ff9d9d;border-radius:var(--radius-sm);padding:8px 10px;font-size:12.5px;margin-bottom:12px;
+}
+.wf-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.wf-save-btn{
+  background:var(--wf-accent);color:#241a00;border:none;
+  border-radius:var(--radius-sm);padding:9px 16px;font-size:13px;font-weight:700;cursor:pointer;
+}
+.wf-save-btn:hover{filter:brightness(1.06)}
+.wf-saved-note{font-size:11px;color:var(--ink-muted)}
+.wf-history{border-top:1px solid var(--border);padding-top:10px}
+/* A heading directly above a history list already reads as its own
+   subsection — the extra hairline right underneath would just double
+   the divider (applies to both the new "Activity History" section and
+   the existing "Matter History" block). */
+.wf-section-heading + .wf-history{border-top:none;padding-top:0}
+.wf-history-empty{font-size:11.5px;color:var(--ink-muted)}
+.wf-history-item{font-size:11.5px;color:var(--ink-secondary);margin-bottom:6px;line-height:1.5}
+.wf-history-time{color:var(--ink-muted);font-variant-numeric:tabular-nums;margin-right:6px}
+
+/* ══════════════════════════════════════════════════════════════════
+   V6.1 — Product Clarity & Intelligence-Ready UI
+   New components only; nothing above this line was restructured, so
+   every V3.x–V5.1 view keeps its exact prior appearance except where
+   dashboard.js explicitly applies one of the classes below.
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ── Secondary "System" navigation (Sources / Validation Queue /
+   System Health) — deliberately styled as a subordinate menu, not a
+   fifth equal primary tab, per the product-clarity brief: administrative
+   infrastructure must never compete visually with the four work
+   destinations. Reuses the .workspace-menu <details> pattern. ────────── */
+.system-menu{position:relative}
+.system-menu > summary{list-style:none;cursor:pointer}
+.system-menu > summary::-webkit-details-marker{display:none}
+.system-menu-panel{
+  position:absolute;top:calc(100% + 6px);left:0;z-index:50;
+  width:230px;max-width:88vw;
+  background:var(--surface-2);border:1px solid var(--border-strong);
+  border-radius:var(--radius);padding:8px;
+  box-shadow:0 12px 32px rgba(0,0,0,.5);
+  display:flex;flex-direction:column;gap:2px;
+}
+.system-menu-item{
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+  background:none;border:none;color:var(--ink-secondary);
+  border-radius:var(--radius-sm);padding:9px 10px;
+  font-size:12.5px;font-weight:600;cursor:pointer;text-align:left;width:100%;
+}
+.system-menu-item:hover,.system-menu-item.active{background:var(--surface-3);color:var(--ink)}
+.system-menu-item-hint{font-size:10px;color:var(--ink-muted);font-weight:500}
+.pnav-system-trigger{
+  padding:10px 16px;border:none;background:none;cursor:pointer;
+  color:var(--ink-muted);font-size:12.5px;font-weight:700;
+  border-bottom:2px solid transparent;border-radius:6px 6px 0 0;
+  display:inline-flex;align-items:center;gap:4px;
+}
+.pnav-system-trigger:hover,.pnav-system-trigger.active{color:var(--ink)}
+.pnav-system-trigger.active{background:var(--surface-3)}
+
+/* ── Compact metric strip — used on Today only; every other view shows
+   just its own feed count instead of repeating this bar (product-clarity
+   §11: "not a repeated full-width metric bar on every page"). ─────────── */
+.metric-strip-wrap{transition:none}
+
+/* ── Today workspace ──────────────────────────────────────────────── */
+.today-section{margin-bottom:var(--space-5)}
+.today-section:last-child{margin-bottom:0}
+.today-section-head{
+  display:flex;align-items:baseline;justify-content:space-between;gap:8px;
+  margin-bottom:var(--space-2);
+}
+.today-section-title{
+  font-size:13.5px;font-weight:700;color:var(--ink);margin:0;
+  display:flex;align-items:center;gap:6px;
+}
+.today-section-count{
+  font-size:11px;font-weight:700;color:var(--ink-muted);
+  background:var(--surface-2);border-radius:999px;padding:1px 8px;
+}
+.today-section-link{font-size:11.5px;font-weight:600;color:var(--accent);background:none;border:none;cursor:pointer;padding:0}
+.today-section-link:hover{text-decoration:underline}
+.today-section-explain{font-size:11.5px;color:var(--ink-muted);margin:0 0 var(--space-2)}
+.today-warning{
+  display:flex;align-items:center;gap:10px;
+  background:rgba(237,161,0,.08);border:1px solid rgba(237,161,0,.35);
+  border-radius:var(--radius);padding:12px 14px;margin-bottom:var(--space-5);
+  font-size:12.5px;color:var(--ink);
+}
+.today-warning-icon{font-size:16px;flex-shrink:0}
+.matter-sig-list{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:0 12px}
+.today-warning a,.today-warning button.today-section-link{color:var(--wf-accent);font-weight:700}
+
+/* ── Rich empty state (explains what belongs, gives a next action) ──── */
+.state-rich{
+  text-align:left;padding:16px 18px;color:var(--ink-secondary);
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+}
+.state-rich p{margin:0 0 8px;font-size:12.5px;line-height:1.55}
+.state-rich p:last-child{margin-bottom:0}
+.state-rich-title{font-size:13px;font-weight:700;color:var(--ink)}
+.state-rich .state-btn{margin-top:4px}
+
+/* ── Tooltip / info-tip — small "?" affordance explaining a metric or
+   term, keyboard- and screen-reader-accessible (not title-attribute-only,
+   since a native title tooltip is unreachable by keyboard). ──────────── */
+.info-tip{position:relative;display:inline-flex}
+.info-tip-btn{
+  width:15px;height:15px;border-radius:50%;flex-shrink:0;
+  background:var(--surface-3);border:1px solid var(--border-strong);
+  color:var(--ink-muted);font-size:9.5px;font-weight:700;line-height:1;
+  cursor:pointer;display:inline-flex;align-items:center;justify-content:center;
+  padding:0;
+}
+.info-tip-btn:hover,.info-tip-btn:focus-visible{color:var(--ink);border-color:var(--ink-muted)}
+.info-tip-text{
+  position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);
+  width:max-content;max-width:240px;
+  background:var(--surface-3);border:1px solid var(--border-strong);
+  color:var(--ink-secondary);border-radius:var(--radius-sm);
+  padding:8px 10px;font-size:11px;font-weight:500;line-height:1.5;
+  box-shadow:0 8px 24px rgba(0,0,0,.45);
+  opacity:0;pointer-events:none;transition:opacity .12s;z-index:60;
+}
+.info-tip-btn:hover + .info-tip-text,
+.info-tip-btn:focus-visible + .info-tip-text{opacity:1}
+
+/* ── Signal Intelligence Workspace — tab strip inside the detail dialog ── */
+.detail-tabs{
+  display:flex;gap:2px;overflow-x:auto;
+  background:var(--surface-2);border-bottom:1px solid var(--border);
+  padding:0 18px;position:sticky;top:0;z-index:5;
+}
+.detail-tab{
+  padding:10px 12px;border:none;background:none;cursor:pointer;
+  color:var(--ink-secondary);font-size:12px;font-weight:700;
+  border-bottom:2px solid transparent;white-space:nowrap;flex-shrink:0;
+}
+.detail-tab.active{color:var(--ink);border-bottom-color:var(--wf-accent)}
+.detail-tab:hover:not(.active){color:var(--ink)}
+.detail-tab-panel{display:none}
+.detail-tab-panel.active{display:block}
+
+/* ── Issue Brief — responsive two-column layout: facts+summary left,
+   evidence+source right, timeline full-width beneath. Stacks to one
+   column on narrow screens/windows (readable line lengths preserved
+   either way). ────────────────────────────────────────────────────── */
+.brief-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 28px;align-items:start}
+.brief-evidence{padding-left:0}
+@media(min-width:700px){
+  .brief-evidence{padding-left:28px;border-left:1px dashed var(--border-strong)}
+}
+.brief-timeline{grid-column:1/-1;margin-top:20px;padding-top:16px;border-top:1px solid var(--border)}
+@media(max-width:699px){
+  .brief-grid{grid-template-columns:1fr}
+}
+
+/* ── Analysis — compact labeled areas, not eight repeated empty cards
+   (product-clarity: no visually identical/large-empty-space cards). ── */
+.analysis-areas{margin:12px 0 0;display:grid;grid-template-columns:1fr 1fr;gap:4px 20px}
+.analysis-area{padding:8px 0;border-bottom:1px solid var(--border)}
+.analysis-area dt{font-size:11.5px;font-weight:700;color:var(--ink)}
+.analysis-area dd{font-size:11px;color:var(--ink-muted);margin:2px 0 0}
+@media(max-width:640px){
+  .analysis-areas{grid-template-columns:1fr}
+}
+
+/* ── Overview tab: primary actions row (Review is implicit — opening
+   this workspace already marks Reviewed; Monitor / Create Matter are
+   one click) ─────────────────────────────────────────────────────────── */
+.detail-primary-actions{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+
+/* ── Why It Matters / Recommended Response — intelligence-ready empty
+   states. Visually calm, not an error state — this is a planned future
+   capability, not a failure. ─────────────────────────────────────────── */
+.intel-empty{
+  background:var(--surface-2);border:1px dashed var(--border-strong);
+  border-radius:var(--radius);padding:16px;
+}
+.intel-empty-title{font-size:13px;font-weight:700;color:var(--ink);margin:0 0 6px}
+.intel-empty-body{font-size:12px;color:var(--ink-secondary);margin:0 0 10px;line-height:1.6}
+.intel-empty-list{margin:0;padding-left:18px;font-size:12px;color:var(--ink-secondary);line-height:1.7}
+
+/* ── Work Products — labeled placeholders, never a fake download control ── */
+.workprod-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.workprod-card{
+  background:var(--surface-2);border:1px solid var(--border);
+  border-radius:var(--radius-sm);padding:11px 12px;
+}
+.workprod-name{font-size:12px;font-weight:700;color:var(--ink);margin:0 0 3px}
+.workprod-status{font-size:10.5px;color:var(--ink-muted);margin:0}
+
+/* ── Timeline (detail workspace) ──────────────────────────────────── */
+.timeline{display:flex;flex-direction:column;gap:0;margin:0;padding:0;list-style:none}
+.timeline-item{
+  position:relative;padding:0 0 16px 20px;border-left:2px solid var(--border-strong);
+  margin-left:5px;
+}
+.timeline-item:last-child{border-left-color:transparent;padding-bottom:0}
+.timeline-item::before{
+  content:"";position:absolute;left:-6px;top:2px;width:9px;height:9px;
+  border-radius:50%;background:var(--accent);border:2px solid var(--surface);
+}
+.timeline-label{font-size:12px;font-weight:700;color:var(--ink);margin:0}
+.timeline-time{font-size:10.5px;color:var(--ink-muted);font-variant-numeric:tabular-nums}
+.timeline-detail{font-size:11.5px;color:var(--ink-secondary);margin:2px 0 0}
+
+/* ── Disclosure for raw technical/diagnostic detail (Evidence tab,
+   System Health) — collapsed by default, always labeled, never hides
+   information from an Administrator, just de-emphasizes it for
+   everyone else. ─────────────────────────────────────────────────────── */
+.tech-disclosure{margin-top:10px}
+.tech-disclosure > summary{
+  cursor:pointer;list-style:none;font-size:11px;font-weight:600;
+  color:var(--ink-muted);display:inline-flex;align-items:center;gap:5px;
+}
+.tech-disclosure > summary::-webkit-details-marker{display:none}
+.tech-disclosure > summary::before{content:"▸";font-size:9px}
+.tech-disclosure[open] > summary::before{content:"▾"}
+.tech-disclosure-body{margin-top:8px;padding-top:8px;border-top:1px dashed var(--border)}
+
+/* ── System Health semantic status (never color-only — always paired
+   with the word itself) ─────────────────────────────────────────────── */
+.sh-status{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700}
+.sh-status-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.sh-good .sh-status-dot{background:var(--good)}
+.sh-good{color:#7be07b}
+.sh-warn .sh-status-dot{background:var(--warning)}
+.sh-warn{color:#ffc94d}
+.sh-bad .sh-status-dot{background:var(--critical)}
+.sh-bad{color:#ff8f8f}
+
+/* ── Reports (placeholder destination) ────────────────────────────── */
+.reports-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.report-card{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  padding:14px 16px;
+}
+.report-card-title{font-size:13px;font-weight:700;color:var(--ink);margin:0 0 4px}
+.report-card-body{font-size:11.5px;color:var(--ink-secondary);margin:0;line-height:1.6}
+
+/* ── Glossary / orientation ───────────────────────────────────────── */
+.glossary-list{margin:0;padding:0;list-style:none}
+.glossary-item{padding:10px 0;border-bottom:1px solid var(--border)}
+.glossary-item:last-child{border-bottom:none}
+.glossary-term{font-size:12.5px;font-weight:700;color:var(--ink);margin:0 0 3px}
+.glossary-def{font-size:12px;color:var(--ink-secondary);margin:0;line-height:1.55}
+.orientation-steps{margin:0;padding-left:20px;font-size:12.5px;color:var(--ink-secondary);line-height:1.9}
+.help-fab{
+  position:fixed;bottom:18px;left:18px;z-index:80;
+  background:var(--surface-2);border:1px solid var(--border-strong);
+  color:var(--ink-secondary);border-radius:999px;width:36px;height:36px;
+  font-size:14px;font-weight:700;cursor:pointer;
+}
+.help-fab:hover{color:var(--ink);border-color:var(--ink-muted)}
+
+/* ── Archive toggle (Active Matters) ──────────────────────────────── */
+.archive-toggle{display:flex;gap:3px;background:var(--surface-2);padding:3px;border-radius:8px}
+
+/* ── V7 Intelligence — AI-generated draft label (must appear on every
+   piece of AI-generated content still in Draft status; never rely on
+   color alone) and the generation confirmation panel. ──────────────── */
+.ai-draft-label{
+  display:inline-flex;align-items:center;gap:5px;
+  background:rgba(144,133,233,.12);border:1px solid rgba(144,133,233,.4);
+  color:#c3bdf5;border-radius:999px;padding:3px 10px;
+  font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;
+  margin-bottom:12px;
+}
+.intel-gen-confirm{
+  background:var(--surface-2);border:1px solid var(--border-strong);
+  border-radius:var(--radius);padding:12px 14px;margin-top:10px;
+}
+.intel-gen-confirm-row{display:flex;justify-content:space-between;gap:10px;padding:4px 0;font-size:11.5px}
+.intel-gen-confirm-row dt{color:var(--ink-muted)}
+.intel-gen-confirm-row dd{margin:0;color:var(--ink);font-weight:600}
+.intel-status-badge{font-size:10.5px;font-weight:700;padding:2px 9px;border-radius:999px;text-transform:uppercase;letter-spacing:.03em}
+.intel-status-Draft{background:rgba(237,161,0,.12);color:var(--wf-accent);border:1px solid rgba(237,161,0,.4)}
+.intel-status-HumanReviewed{background:rgba(57,135,229,.14);color:#8cbdf5;border:1px solid rgba(57,135,229,.4)}
+.intel-status-ApprovedforInternalUse{background:rgba(12,163,12,.14);color:#7be07b;border:1px solid rgba(12,163,12,.4)}
+.intel-status-Rejected,.intel-status-Superseded,.intel-status-Stale{background:rgba(255,255,255,.06);color:var(--ink-muted);border:1px solid var(--border-strong)}
+
+/* ── V7.1 Manual Intelligence Pilot ──────────────────────────────── */
+.manual-pilot-steps{list-style:none;margin:14px 0 0;padding:0;display:flex;flex-direction:column;gap:16px}
+.manual-pilot-steps li{border-left:2px solid var(--border-strong);padding-left:14px}
+.manual-pilot-step-title{font-size:12.5px;font-weight:700;color:var(--ink);margin:0 0 8px}
+.manual-pilot-textarea{
+  width:100%;min-height:120px;font-family:ui-monospace,Consolas,monospace;font-size:11px;
+  background:var(--surface-2);color:var(--ink);border:1px solid var(--border-strong);
+  border-radius:var(--radius);padding:10px;resize:vertical;box-sizing:border-box;
+}
+.manual-pilot-upload-label{display:inline-flex;align-items:center;cursor:pointer}
+.manual-pilot-preview{background:var(--surface-2);border:1px solid var(--border-strong);border-radius:var(--radius);padding:12px 14px;margin-top:6px}
+.manual-pilot-preview-section{margin-bottom:10px}
+.manual-pilot-preview-section:last-child{margin-bottom:0}
+.manual-pilot-preview-label{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--ink-muted);margin:0 0 3px}
+.manual-pilot-preview-value{font-size:12px;color:var(--ink);margin:0}
+.manual-pilot-warning{
+  background:rgba(250,178,25,.12);border:1px solid rgba(250,178,25,.4);color:var(--warning);
+  border-radius:var(--radius);padding:8px 12px;font-size:11.5px;margin-top:8px;
+}
+.manual-pilot-diff-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:6px}
+.manual-pilot-diff-cell{background:var(--surface);border:1px solid var(--border-strong);border-radius:var(--radius);padding:8px 10px;text-align:center}
+.manual-pilot-diff-cell dt{font-size:10px;color:var(--ink-muted);text-transform:uppercase;letter-spacing:.03em;margin:0 0 4px}
+.manual-pilot-diff-cell dd{font-size:13px;font-weight:700;color:var(--ink);margin:0}
+.manual-pilot-edit-field{margin-bottom:10px}
+.manual-pilot-edit-field label{display:block;font-size:10.5px;color:var(--ink-muted);margin-bottom:3px}
+.manual-pilot-edit-field textarea,.manual-pilot-edit-field select{
+  width:100%;font-size:12px;background:var(--surface);color:var(--ink);
+  border:1px solid var(--border-strong);border-radius:var(--radius);padding:6px 8px;box-sizing:border-box;
+}
+.edit-list-rows{display:flex;flex-direction:column;gap:6px;margin-bottom:6px}
+.edit-list-row{display:flex;align-items:flex-start;gap:6px}
+.edit-list-row .row-text{flex:1;font-size:12px;background:var(--surface);color:var(--ink);border:1px solid var(--border-strong);border-radius:var(--radius-sm);padding:5px 7px;resize:vertical}
+.edit-inference-row{flex-wrap:wrap}
+.edit-inference-row .row-text{flex:1 1 100%}
+.edit-inference-row .row-basis{flex:1 1 60%;font-size:11.5px;background:var(--surface);color:var(--ink-secondary);border:1px solid var(--border-strong);border-radius:var(--radius-sm);padding:5px 7px;resize:vertical}
+.edit-inference-row .row-confidence{flex:0 0 auto;font-size:11.5px;background:var(--surface);color:var(--ink);border:1px solid var(--border-strong);border-radius:var(--radius-sm);padding:5px 7px}
+.edit-list-row [data-remove-row]{flex:0 0 auto;padding:4px 8px;line-height:1}
+
+/* ── Mobile ───────────────────────────────────────────────────── */
+@media(max-width:860px){
+  .overview{grid-template-columns:repeat(3,1fr)}
+  .attn-grid{grid-template-columns:repeat(2,1fr)}
+  .workprod-grid{grid-template-columns:1fr}
+  .reports-grid{grid-template-columns:1fr}
+}
+@media(max-width:640px){
+  .hdr{padding:16px}
+  .layout{padding:12px;flex-direction:column}
+  .filters-panel{position:static;width:100%;flex:none}
+  .overview{grid-template-columns:repeat(2,1fr)}
+  .sig-date{margin-left:0}
+  .wf-grid{grid-template-columns:1fr}
+  .dl-grid{grid-template-columns:1fr}
+  .local-notice{padding:7px 16px;font-size:11px}
+  .rp-panel{padding:10px 16px 12px}
+  .primary-nav{padding:14px 16px 0}
+  .nav-subtitle{padding:0 16px 10px}
+  .pnav-tab{padding:9px 10px;font-size:12px}
+  .attn-grid{grid-template-columns:1fr}
+  .feed-head{flex-wrap:wrap}
+  .matter-sig-row,.matter-pick-row,.matter-link-row{flex-direction:column;align-items:stretch}
+  .matter-sig-actions{justify-content:flex-end}
+  .workspace-menu-panel{position:fixed;top:auto;right:12px;left:12px;width:auto;max-width:none}
+  .qa-btn{padding:8px 13px;min-height:36px}
+
+  /* Mobile filter drawer (V3.2 §7): collapsed by default so the feed is
+     reachable without scrolling past filters; the toggle button opens
+     whichever panel is currently relevant, never the irrelevant one. */
+  .mobile-filters-btn{display:block}
+  .filters-panel{display:none}
+  .filters-panel.mobile-open{display:flex}
+  .mobile-filters-close{
+    display:block;margin-bottom:4px;align-self:flex-end;
+    background:none;border:none;color:var(--ink-muted);
+    font-size:12px;font-weight:600;cursor:pointer;padding:4px;
+  }
+  .mobile-filters-close:hover{color:var(--ink)}
+
+  /* V6.1 additions */
+  .system-menu-panel{position:fixed;top:auto;right:12px;left:12px;width:auto;max-width:none}
+  .detail-tabs{padding:0 12px}
+  .help-fab{bottom:14px;left:14px}
+}

@@ -1,0 +1,832 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Watchdog EWS — DESIGN REVIEW MIRROR (NOT PRODUCTION)</title>
+<link rel="stylesheet" href="dashboard.css">
+<style>
+  #reviewMirrorBanner {
+    position: sticky; top: 0; z-index: 9999;
+    background: #7a1f1f; color: #fff; font: 600 12.5px/1.4 system-ui, sans-serif;
+    text-align: center; padding: 5px 10px; letter-spacing: .02em;
+  }
+  #reviewMirrorBanner a { color: #ffd9d9; }
+</style>
+</head>
+<body>
+
+<div id="reviewMirrorBanner">DESIGN REVIEW — NOT PRODUCTION — fabricated data only, read-only, no login</div>
+
+<!-- ══ Auth gate — shown until requireActiveSession() resolves. No
+     protected content, and no dashboard.js boot, happens before this
+     resolves. In this mirror requireActiveSession() resolves immediately
+     to a fixture profile — this state is visible only for an instant. ── -->
+<div id="authGate" class="state loading" style="min-height:100vh;display:flex;align-items:center;justify-content:center;">
+  <div style="text-align:center">
+    <div class="spinner" aria-hidden="true"></div>
+    <p>Verifying access…</p>
+  </div>
+</div>
+
+<!-- ══ Shown instead of the app when the V4 database schema has not
+     been installed yet. Never triggered in this mirror — kept only so
+     dashboard/app-boot's branch logic matches production exactly. ══════ -->
+<div id="schemaMissingNotice" hidden style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px">
+  <div style="max-width:480px;text-align:center">
+    <h1 style="font-size:20px">Watchdog EWS setup incomplete</h1>
+    <p style="color:var(--ink-secondary)">
+      You're signed in, but the V4 database schema has not been installed on
+      this project yet. An Administrator needs to apply the pending
+      migration before the protected workspace becomes available.
+    </p>
+    <button type="button" class="wf-tool-btn" id="schemaMissingSignOut">Sign Out</button>
+  </div>
+</div>
+
+<div id="appRoot" hidden>
+
+<a class="skip-link" href="#main">Skip to signal feed</a>
+
+<!-- ══ Header ══════════════════════════════════════════════════ -->
+<header class="hdr">
+  <div class="hdr-id">
+    <div class="hdr-title-row">
+      <h1>Watchdog EWS</h1>
+      <span class="conn-badge" id="connBadge"><span class="conn-dot" aria-hidden="true"></span>Data Connected</span>
+    </div>
+    <p class="hdr-instance">North Texas Policy Tracker</p>
+  </div>
+  <div class="hdr-status">
+    <details class="workspace-menu" id="workspaceMenu">
+      <summary class="wf-tool-btn">Workspace ▾</summary>
+      <div class="workspace-menu-panel">
+        <p class="wsm-heading">Today's Activity</p>
+        <div id="todaysActivityMini" class="wf-history"></div>
+        <button type="button" class="wf-tool-btn" id="viewAllActivityBtn">View All Activity</button>
+        <div class="wsm-divider"></div>
+        <button class="wf-tool-btn" id="exportBtn" type="button">Export Workspace</button>
+        <button class="wf-tool-btn" id="importBtn" type="button">Import Workspace</button>
+        <input type="file" id="importFile" accept="application/json,.json" hidden>
+        <div class="wsm-divider"></div>
+        <button class="wf-tool-btn wf-tool-danger" id="resetWorkspaceBtn" type="button">Reset Workspace</button>
+        <span class="wf-tool-msg" id="wfToolMsg" role="status" aria-live="polite"></span>
+      </div>
+    </details>
+    <span class="hdr-meta" id="hdrUserDisplay" title="Signed in as">—</span>
+    <span class="hdr-meta" id="hdrUserRole">—</span>
+    <button type="button" class="wf-tool-btn" id="glossaryBtn">Glossary</button>
+    <button type="button" class="wf-tool-btn" id="signOutBtn">Sign Out</button>
+  </div>
+</header>
+
+<!-- ══ Workspace sync notice ═══════════════════════════════════════ -->
+<div class="local-notice" role="note">
+  <span aria-hidden="true">🔒</span>
+  <span id="localNoticeText">Loading your synced workspace…</span>
+</div>
+
+<!-- ══ Territory summary — shown on Today only; other views show just
+     their own feed count instead of repeating this bar (product-clarity
+     §11/§12). ═════════════════════════════════════════════════════ -->
+<section class="overview" id="overviewStrip" aria-label="Territory summary">
+  <div class="stat s-high"><span class="stat-n" id="cHigh">—</span><span class="stat-l">High Priority</span></div>
+  <div class="stat s-med"><span class="stat-n" id="cMed">—</span><span class="stat-l">Medium Priority</span></div>
+  <div class="stat s-mon"><span class="stat-n" id="cMon">—</span><span class="stat-l">Monitor</span></div>
+  <div class="stat s-juris"><span class="stat-n" id="cJuris">—</span><span class="stat-l">Jurisdictions</span></div>
+  <div class="stat s-src"><span class="stat-n" id="cSources">—</span><span class="stat-l">Sources <span class="info-tip"><button type="button" class="info-tip-btn" aria-label="What does this count?">?</button><span class="info-tip-text" role="tooltip">Distinct sources represented in the signals currently shown here — not the full Sources registry (see System → Sources), which also includes sources with no recent activity.</span></span></span></div>
+  <div class="stat s-tot"><span class="stat-n" id="cTerritory">—</span><span class="stat-l">Signals in Territory <span class="info-tip"><button type="button" class="info-tip-btn" aria-label="What does this count?">?</button><span class="info-tip-text" role="tooltip">Canonical signals after hiding likely duplicates of the same real-world event — not the total row count in the database, which also includes those hidden duplicates.</span></span></span></div>
+</section>
+
+<!-- ══ Review Progress ══════════════════════════════════════════════ -->
+<section class="rp-panel" id="reviewProgress" aria-label="Review progress">
+  <p class="section-label">Review Progress</p>
+  <div class="rp-bar-wrap"><div class="rp-bar-fill" id="rpBarFill" style="width:0%"></div></div>
+  <p class="rp-bar-label" id="rpBarLabel">0 / 0 signals reviewed (0%)</p>
+  <div class="rp-metrics">
+    <button type="button" class="rp-metric" data-rp-goto="unreviewed"><span class="rp-metric-n" id="rpRemaining">—</span><span class="rp-metric-l">Remaining</span></button>
+    <button type="button" class="rp-metric" data-rp-goto="reviewed"><span class="rp-metric-n" id="rpReviewed">—</span><span class="rp-metric-l">Reviewed</span></button>
+    <button type="button" class="rp-metric" data-rp-goto="reviewed"><span class="rp-metric-n" id="rpReviewedToday">—</span><span class="rp-metric-l">Reviewed Today</span></button>
+    <button type="button" class="rp-metric" data-rp-goto="completed"><span class="rp-metric-n" id="rpCompletedToday">—</span><span class="rp-metric-l">Completed Today</span></button>
+    <button type="button" class="rp-metric" data-rp-goto="matters"><span class="rp-metric-n" id="rpMattersToday">—</span><span class="rp-metric-l">Matters Updated Today</span></button>
+  </div>
+</section>
+
+<!-- ══ Primary workspace navigation ═════════════════════════════════ -->
+<nav class="primary-nav" id="primaryNav" role="tablist" aria-label="Workspace navigation">
+  <button class="pnav-tab active" role="tab" aria-selected="true" data-primary="today">Today</button>
+  <button class="pnav-tab" role="tab" aria-selected="false" data-primary="signals">Intelligence</button>
+  <button class="pnav-tab" role="tab" aria-selected="false" data-primary="matters">Active Matters</button>
+  <button class="pnav-tab" role="tab" aria-selected="false" data-primary="reports">Reports</button>
+  <details class="system-menu" id="systemMenu">
+    <summary class="pnav-system-trigger" id="systemMenuTrigger">System ▾</summary>
+    <div class="system-menu-panel">
+      <button type="button" class="system-menu-item" data-primary="sourceCoverage">
+        Sources <span class="system-menu-item-hint">registry</span>
+      </button>
+      <button type="button" class="system-menu-item" data-primary="quarantine">
+        Validation Queue <span class="system-menu-item-hint" id="systemMenuQueueCount"></span>
+      </button>
+      <button type="button" class="system-menu-item" data-primary="operations">
+        System Health <span class="system-menu-item-hint" id="systemMenuHealthHint"></span>
+      </button>
+    </div>
+  </details>
+</nav>
+<p class="nav-subtitle" id="navSubtitle">What requires your attention right now.</p>
+
+<main id="main" class="layout">
+
+  <!-- ══ Mobile filter drawer toggle (hidden on desktop) ═════════════ -->
+  <button type="button" class="mobile-filters-btn" id="mobileFiltersToggle" aria-expanded="false">Filters</button>
+
+  <!-- ══ Signal filters ═════════════════════════════════════════════ -->
+  <section class="filters-panel" id="signalFiltersPanel" aria-label="Signal filters">
+    <button type="button" class="mobile-filters-close" aria-label="Close filters">✕ Close Filters</button>
+    <div class="tabs" id="signalsSubNav" role="tablist" aria-label="Intelligence view">
+      <button class="tab active" role="tab" aria-selected="true" data-sub="queue">Needs Review</button>
+      <button class="tab" role="tab" aria-selected="false" data-sub="monitoring">Monitoring</button>
+      <button class="tab" role="tab" aria-selected="false" data-sub="escalated">Escalated to Matter</button>
+      <button class="tab" role="tab" aria-selected="false" data-sub="all">All</button>
+    </div>
+
+    <div class="tabs" id="priorityTabs" role="tablist" aria-label="Filter by priority">
+      <button class="tab active" role="tab" aria-selected="true" data-priority="all">All</button>
+      <button class="tab" role="tab" aria-selected="false" data-priority="High">High</button>
+      <button class="tab" role="tab" aria-selected="false" data-priority="Medium">Medium</button>
+      <button class="tab" role="tab" aria-selected="false" data-priority="Monitor">Monitor</button>
+    </div>
+
+    <div class="field">
+      <label for="searchBox">Search</label>
+      <input type="search" id="searchBox" placeholder="Title, jurisdiction, category, summary…" autocomplete="off">
+    </div>
+
+    <div class="field">
+      <label for="countySel">County</label>
+      <select id="countySel">
+        <option value="">All counties</option>
+        <option>Collin</option>
+        <option>Hunt</option>
+        <option>Rockwall</option>
+        <option>Van Zandt</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="sortSel">Sort by</label>
+      <select id="sortSel">
+        <option value="newest">Newest detected</option>
+        <option value="oldest">Oldest detected</option>
+        <option value="priority">Highest priority</option>
+        <option value="followup">Follow-up date</option>
+        <option value="updated">Recently updated by operator</option>
+        <option value="urgency">Attention priority</option>
+      </select>
+    </div>
+
+    <div class="field" id="showSuppressedQuarantinedField" hidden>
+      <label><input type="checkbox" id="showSuppressedQuarantinedChk"> Show Suppressed &amp; Quarantined</label>
+    </div>
+
+    <details class="more-filters" id="moreFiltersDetails">
+      <summary class="more-filters-toggle">More Filters <span class="filter-dot" id="advFilterDot" hidden></span></summary>
+      <div class="field-grid">
+        <div class="field">
+          <label for="jurisdictionSel">Jurisdiction</label>
+          <select id="jurisdictionSel">
+            <option value="">All jurisdictions</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="categorySel">Category</label>
+          <select id="categorySel">
+            <option value="">All categories</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="reviewSel">Scanner Review Status</label>
+          <select id="reviewSel">
+            <option value="">All statuses</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="recencySel">Detected Date</label>
+          <select id="recencySel">
+            <option value="">All time</option>
+            <option value="7">Last 7 days</option>
+            <option value="30">Last 30 days</option>
+            <option value="90">Last 90 days</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="reviewStateSel">Local Review State</label>
+          <select id="reviewStateSel">
+            <option value="">All</option>
+            <option value="Unreviewed">Unreviewed</option>
+            <option value="Reviewed">Reviewed</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="workflowSel">Workflow Status</label>
+          <select id="workflowSel">
+            <option value="">All in view</option>
+          </select>
+        </div>
+      </div>
+    </details>
+
+    <button class="reset-btn" id="resetBtn" type="button">Reset filters</button>
+  </section>
+
+  <!-- ══ Policy Matter filters ═════════════════════════════════════ -->
+  <section class="filters-panel" id="matterFiltersPanel" aria-label="Policy Matter filters" hidden>
+    <button type="button" class="mobile-filters-close" aria-label="Close filters">✕ Close Filters</button>
+    <div class="tabs" id="matterPriorityTabs" role="tablist" aria-label="Filter by matter priority">
+      <button class="tab active" role="tab" aria-selected="true" data-priority="all">All</button>
+      <button class="tab" role="tab" aria-selected="false" data-priority="High">High</button>
+      <button class="tab" role="tab" aria-selected="false" data-priority="Medium">Medium</button>
+      <button class="tab" role="tab" aria-selected="false" data-priority="Monitor">Monitor</button>
+    </div>
+
+    <div class="field">
+      <label for="mfStatus">Matter Status</label>
+      <select id="mfStatus">
+        <option value="">All</option>
+        <option value="Monitoring">Monitoring</option>
+        <option value="Action Required">Action Required</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="mfJurisdiction">Jurisdiction</label>
+      <select id="mfJurisdiction"><option value="">All jurisdictions</option></select>
+    </div>
+    <div class="field">
+      <label for="mfCounty">County</label>
+      <select id="mfCounty"><option value="">All counties</option></select>
+    </div>
+    <div class="field">
+      <label for="mfSort">Sort by</label>
+      <select id="mfSort">
+        <option value="default">Priority &amp; urgency</option>
+        <option value="updated">Recently updated</option>
+      </select>
+    </div>
+
+    <button class="reset-btn" id="resetMatterFiltersBtn" type="button">Reset filters</button>
+  </section>
+
+  <!-- ══ Intelligence feed (formerly "Signals") ═════════════════════ -->
+  <section class="feed" id="feedSection">
+    <div class="attn-back-bar" id="attentionBackBar" hidden>
+      <button type="button" class="wf-tool-btn" id="attentionBackBtn">← Back to Today</button>
+    </div>
+    <div class="attn-summary-wrap" id="attentionSummaryWrap" hidden>
+      <div id="attentionSummary"></div>
+    </div>
+    <div class="feed-head">
+      <h2>Intelligence</h2>
+      <span class="feed-count" id="feedCount"></span>
+    </div>
+    <div id="sigList" class="sig-list" aria-live="polite">
+      <div class="state loading">
+        <div class="spinner" aria-hidden="true"></div>
+        <p>Loading signals…</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══ Active Matters (formerly "Policy Matters" + "Completed") ═══ -->
+  <section class="feed" id="mattersSection" hidden>
+    <div class="feed-head">
+      <div class="feed-head-left">
+        <h2>Active Matters</h2>
+        <span class="feed-count" id="mattersCount"></span>
+      </div>
+      <button type="button" class="wf-tool-btn" id="newMatterBtn">+ New Matter</button>
+    </div>
+    <p class="today-section-explain" id="mattersExplain">Active Matters are issues receiving sustained government-affairs management — assigned, tracked, and expected to move toward a resolution.</p>
+    <div class="tabs archive-toggle" id="matterArchiveToggle" role="tablist" aria-label="Active Matters or Archive">
+      <button class="tab active" role="tab" aria-selected="true" data-archive="active">Active</button>
+      <button class="tab" role="tab" aria-selected="false" data-archive="archive">Archive</button>
+    </div>
+    <div class="tabs" id="matterArchiveSubNav" role="tablist" aria-label="Archive view" hidden>
+      <button class="tab active" role="tab" aria-selected="true" data-sub="resolved-matters">Resolved Matters</button>
+      <button class="tab" role="tab" aria-selected="false" data-sub="closed">Closed Signals</button>
+      <button class="tab" role="tab" aria-selected="false" data-sub="dismissed">Dismissed Signals</button>
+    </div>
+    <div id="mattersList" class="sig-list"></div>
+  </section>
+
+  <!-- ══ Today — default landing workspace ═══════════════════════════ -->
+  <section class="feed" id="todaySection" hidden>
+    <div class="feed-head"><h2>Today</h2></div>
+    <div id="todayContent"></div>
+  </section>
+
+  <!-- ══ Reports (placeholder destination) ═════════════════════════ -->
+  <section class="feed" id="reportsSection" hidden>
+    <div class="feed-head"><h2>Reports</h2></div>
+    <div class="state-rich">
+      <p class="state-rich-title">Reports is not yet available.</p>
+      <p>This is where Watchdog will produce polished, shareable output — not raw data exports. Planned:</p>
+      <div class="reports-grid" id="reportsGrid" style="margin-top:10px"></div>
+    </div>
+  </section>
+
+  <!-- ══ Sources (formerly "Source Coverage" — V5 / V5.1 registry-grade) ── -->
+  <section class="feed" id="sourceCoverageSection" hidden>
+    <div class="feed-head">
+      <div class="feed-head-left">
+        <h2>Sources</h2>
+        <span class="feed-count" id="sourceCoverageCount"></span>
+      </div>
+      <button type="button" class="reset-btn" id="scGotoQuarantineBtn">Validation Queue →</button>
+    </div>
+    <p class="today-section-explain" id="sourceCoverageExplain">The registry of every organization, endpoint, and reporter Watchdog trusts and monitors across the four-county territory.</p>
+    <div class="tabs" id="sourceCoverageSubNav" role="tablist" aria-label="Sources view">
+      <button class="tab active" role="tab" aria-selected="true" data-sc-sub="organizations">Organizations</button>
+      <button class="tab" role="tab" aria-selected="false" data-sc-sub="endpoints">Endpoints</button>
+      <button class="tab" role="tab" aria-selected="false" data-sc-sub="reporters">Reporter Watches</button>
+      <button class="tab" role="tab" aria-selected="false" data-sc-sub="districts">Special Districts</button>
+      <button class="tab" role="tab" aria-selected="false" data-sc-sub="exclusions">Exclusions</button>
+      <button class="tab" role="tab" aria-selected="false" data-sc-sub="health">Health</button>
+    </div>
+    <div class="sc-filters" id="sourceCoverageFilters">
+      <input type="search" id="scSearch" placeholder="Search sources…" autocomplete="off">
+      <select id="scCounty">
+        <option value="">All counties</option>
+        <option>Collin</option>
+        <option>Hunt</option>
+        <option>Rockwall</option>
+        <option>Van Zandt</option>
+      </select>
+      <select id="scJurisdiction"><option value="">All jurisdictions</option></select>
+      <select id="scSourceType"><option value="">All source types</option></select>
+      <select id="scSourceLane"><option value="">All lanes</option></select>
+      <select id="scPriority"><option value="">All priorities</option></select>
+      <select id="scReliability"><option value="">All reliability</option></select>
+      <select id="scMonitoringMethod"><option value="">All monitoring methods</option></select>
+      <select id="scActive">
+        <option value="">Active + Inactive</option>
+        <option value="true">Active only</option>
+        <option value="false">Inactive only</option>
+      </select>
+      <button class="reset-btn" id="scResetBtn" type="button">Reset filters</button>
+    </div>
+    <div class="sc-filters" id="sourceCoverageSimpleFilters" hidden>
+      <input type="search" id="scSearch2" placeholder="Search…" autocomplete="off">
+      <button class="reset-btn" id="scResetBtn2" type="button">Reset filters</button>
+    </div>
+    <div id="sourceCoverageList" class="sig-list"></div>
+  </section>
+
+  <!-- ══ Validation Queue (formerly "Quarantine Review" — V5) ═══════ -->
+  <section class="feed" id="quarantineSection" hidden>
+    <div class="feed-head">
+      <div class="feed-head-left">
+        <h2>Validation Queue</h2>
+        <span class="feed-count" id="quarantineCount"></span>
+      </div>
+    </div>
+    <p class="today-section-explain" id="quarantineExplain">These signals need human review because Watchdog cannot yet confirm their geography, jurisdiction, or source identity.</p>
+    <div id="quarantineList" class="sig-list"></div>
+  </section>
+
+  <!-- ══ System Health (formerly "Operations" — V6 hosted scanner run history) ── -->
+  <section class="feed" id="operationsSection" hidden>
+    <div class="feed-head">
+      <div class="feed-head-left">
+        <h2>System Health</h2>
+        <span class="feed-count" id="operationsCount"></span>
+      </div>
+      <button type="button" class="reset-btn" id="operationsRefreshBtn">Refresh</button>
+    </div>
+    <p class="today-section-explain" id="operationsExplain">Hosted scanners, source availability, and collection history — technical operations, not government-affairs priority.</p>
+    <div id="operationsSummary"></div>
+    <p class="section-label">Recent Runs</p>
+    <div id="operationsRunList" class="sig-list"></div>
+  </section>
+
+</main>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<!-- ══ Signal Intelligence Workspace (detail dialog) ═══════════════ -->
+<dialog id="detailDialog" class="detail-dialog" aria-labelledby="detailTitle">
+  <div class="detail-head">
+    <h2 id="detailTitle">Signal detail</h2>
+    <button class="detail-close" id="detailClose" type="button" aria-label="Close detail view">✕</button>
+  </div>
+  <div class="detail-tabs" id="detailTabs" role="tablist" aria-label="Signal Intelligence Workspace">
+    <button class="detail-tab active" role="tab" aria-selected="true" data-dtab="brief">Issue Brief</button>
+    <button class="detail-tab" role="tab" aria-selected="false" data-dtab="analysis">Analysis</button>
+    <button class="detail-tab" role="tab" aria-selected="false" data-dtab="action">Action</button>
+    <button class="detail-tab" role="tab" aria-selected="false" data-dtab="workproducts">Work Products</button>
+  </div>
+  <div class="detail-body" id="detailBody">
+
+    <!-- ══ 1. Issue Brief ══════════════════════════════════════════ -->
+    <div class="detail-tab-panel active" id="detailPanelBrief">
+      <div class="brief-grid">
+        <div class="brief-facts">
+          <div id="detailReadOnly"></div>
+        </div>
+        <div class="brief-evidence">
+          <p class="wf-section-heading">Evidence</p>
+          <div id="detailEvidence"></div>
+        </div>
+      </div>
+      <div class="brief-timeline">
+        <p class="wf-section-heading">Timeline</p>
+        <div id="detailTimeline"></div>
+        <div class="wf-history" id="wfHistory"></div>
+      </div>
+    </div>
+
+    <!-- ══ 2. Analysis ═══════════════════════════════════════════════ -->
+    <div class="detail-tab-panel" id="detailPanelAnalysis">
+      <div id="detailAnalysisContent">
+        <div class="intel-empty">
+          <p class="intel-empty-title">Intelligence analysis has not been generated for this signal.</p>
+          <p class="intel-empty-body">Planned analysis areas:</p>
+          <dl class="analysis-areas">
+            <div class="analysis-area"><dt>Why It Matters</dt><dd>Not yet generated</dd></div>
+            <div class="analysis-area"><dt>Organizational Relevance</dt><dd>Not yet generated</dd></div>
+            <div class="analysis-area"><dt>Practical Consequences</dt><dd>Not yet generated</dd></div>
+            <div class="analysis-area"><dt>Geographic Significance</dt><dd>Not yet generated</dd></div>
+            <div class="analysis-area"><dt>Materiality</dt><dd>Not yet generated</dd></div>
+            <div class="analysis-area"><dt>Evidence Gaps and Uncertainty</dt><dd>Not yet generated</dd></div>
+            <div class="analysis-area"><dt>Position Pathway</dt><dd>Not yet generated</dd></div>
+            <div class="analysis-area"><dt>Priority Rationale</dt><dd>Not yet generated</dd></div>
+          </dl>
+        </div>
+      </div>
+
+      <section class="wf-section" aria-label="Manual Intelligence Pilot" id="manualPilotSection" hidden>
+        <p class="wf-section-heading">Manual Intelligence Pilot</p>
+        <p class="state-detail">
+          Watchdog prepares the evidence and methodology. ChatGPT drafts the analysis.
+          A Government Affairs professional reviews and approves the result.
+        </p>
+        <p class="wf-required-hint">
+          No analysis is generated inside Watchdog. No paid API is used. Imported content remains a Draft.
+          Human review is mandatory. Organizational positions and actions are never approved automatically.
+        </p>
+
+        <ol class="manual-pilot-steps">
+          <li>
+            <p class="manual-pilot-step-title">1. Build Intelligence Packet</p>
+            <button type="button" class="wf-tool-btn" id="manualPilotBuildBtn">Build Intelligence Packet</button>
+            <div id="manualPilotPacketMeta"></div>
+          </li>
+
+          <li>
+            <p class="manual-pilot-step-title">2. Copy for ChatGPT</p>
+            <div id="manualPilotPacketArea" hidden>
+              <textarea id="manualPilotPacketText" class="manual-pilot-textarea" readonly rows="6"></textarea>
+              <div class="wf-actions">
+                <button type="button" class="wf-tool-btn" id="manualPilotCopyBtn">Copy for ChatGPT</button>
+                <button type="button" class="wf-tool-btn" id="manualPilotDownloadBtn">Download Packet</button>
+                <span id="manualPilotCopyStatus" class="state-detail" role="status"></span>
+              </div>
+            </div>
+          </li>
+
+          <li>
+            <p class="manual-pilot-step-title">3. Import ChatGPT Response</p>
+            <div id="manualPilotImportArea" hidden>
+              <textarea id="manualPilotResponseInput" class="manual-pilot-textarea" rows="6"
+                placeholder="Paste ChatGPT's fenced JSON response here"></textarea>
+              <div class="wf-actions">
+                <label class="wf-tool-btn manual-pilot-upload-label">
+                  Upload Response
+                  <input type="file" id="manualPilotUploadInput" accept="application/json,.json,.txt" hidden />
+                </label>
+                <button type="button" class="wf-tool-btn" id="manualPilotValidateBtn">Validate</button>
+                <button type="button" class="wf-tool-btn" id="manualPilotCancelImportBtn">Cancel</button>
+              </div>
+              <p class="wf-error" id="manualPilotImportError" role="alert" hidden></p>
+            </div>
+          </li>
+
+          <li>
+            <p class="manual-pilot-step-title">4. Review and Save Draft</p>
+            <div id="manualPilotPreviewArea" hidden></div>
+          </li>
+        </ol>
+      </section>
+    </div>
+
+    <!-- ══ 3. Action ═══════════════════════════════════════════════ -->
+    <div class="detail-tab-panel" id="detailPanelAction">
+      <div class="detail-primary-actions" id="detailPrimaryActions"></div>
+
+      <section class="wf-section" aria-label="Intelligence Generation" id="intelGenSection">
+        <p class="wf-section-heading">Intelligence Generation</p>
+        <div id="intelGenContent"></div>
+      </section>
+
+      <section class="wf-section" aria-label="My Workflow">
+        <p class="wf-section-heading">My Workflow <span class="wf-local-tag">personal</span></p>
+
+        <div class="field-grid wf-grid">
+          <div class="field">
+            <label for="wfStatus">Workflow Status</label>
+            <select id="wfStatus">
+              <option value="">— Unassigned —</option>
+              <option value="Monitoring">Monitoring</option>
+              <option value="Action Required">Action Required</option>
+              <option value="Closed">Closed</option>
+              <option value="Dismissed">Dismissed</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="wfResponseLevel">Response Level</label>
+            <select id="wfResponseLevel">
+              <option value="">— Not set —</option>
+              <option value="0">0 — Record / No Action</option>
+              <option value="1">1 — Conversation / Clarification</option>
+              <option value="2">2 — Research / Early Engagement</option>
+              <option value="3">3 — Coordinated Advocacy</option>
+              <option value="4">4 — Major Escalation</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="wfFollowUp">Follow-Up Date</label>
+            <input type="date" id="wfFollowUp">
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="wfNextAction">Next Action</label>
+          <input type="text" id="wfNextAction" placeholder="e.g. Draft letter to council, schedule call with staff…">
+        </div>
+
+        <div class="field">
+          <label for="wfNote">Operator Note</label>
+          <textarea id="wfNote" rows="3" placeholder="Internal notes for this signal…"></textarea>
+        </div>
+
+        <div class="field" id="wfDismissalWrap">
+          <label for="wfDismissalReason">Dismissal Reason <span class="wf-required-hint" id="wfDismissalHint">(required when status is Dismissed)</span></label>
+          <textarea id="wfDismissalReason" rows="2"></textarea>
+        </div>
+
+        <p class="wf-error" id="wfError" role="alert" hidden></p>
+
+        <div class="wf-actions">
+          <button class="wf-save-btn" id="wfSaveBtn" type="button">Save Changes</button>
+          <span class="wf-saved-note" id="wfSavedNote">Synced to your account.</span>
+        </div>
+      </section>
+
+      <section class="wf-section" aria-label="Shared Coordination">
+        <p class="wf-section-heading">Shared Coordination <span class="wf-local-tag">shared</span></p>
+
+        <p class="wf-error" id="sharedStaleWarning" role="alert" hidden>
+          This record has been updated by someone else. Your unsaved changes here are preserved —
+          <button type="button" class="pw-toggle" id="sharedReloadLatestBtn" style="padding:0;text-decoration:underline">Reload Latest</button> to see them, or keep editing and Save to try again.
+        </p>
+
+        <div class="field-grid wf-grid">
+          <div class="field">
+            <label for="wfLeadership">Leadership Awareness Required</label>
+            <select id="wfLeadership">
+              <option value="">— Not set —</option>
+              <option value="Yes">Yes</option>
+              <option value="No">No</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="wfCommittee">Committee Attention</label>
+            <select id="wfCommittee">
+              <option>None</option>
+              <option>Requested</option>
+              <option>Scheduled</option>
+              <option>Reviewed</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="wfSharedNote">Shared Coordination Note</label>
+          <textarea id="wfSharedNote" rows="3" placeholder="Visible to the whole team…"></textarea>
+        </div>
+
+        <p class="wf-error" id="wfSharedError" role="alert" hidden></p>
+
+        <div class="wf-actions">
+          <button class="wf-save-btn" id="wfSharedSaveBtn" type="button">Save Shared Coordination</button>
+          <span class="wf-saved-note" id="wfSharedAttribution">Not yet set by anyone.</span>
+        </div>
+      </section>
+
+      <section class="wf-section" aria-label="Linked Active Matters">
+        <p class="wf-section-heading">Linked Active Matters</p>
+        <div id="signalMatterLinks"></div>
+        <div class="wf-actions">
+          <button type="button" class="wf-tool-btn" id="promoteMatterBtn">Create Matter</button>
+          <button type="button" class="wf-tool-btn" id="attachMatterBtn">Add to Existing Matter</button>
+        </div>
+      </section>
+
+      <section class="wf-section" aria-label="Future Recommended Response">
+        <p class="wf-section-heading">Future Recommended Response &amp; Routing</p>
+        <div id="detailResponse"></div>
+      </section>
+    </div>
+
+    <!-- ══ 4. Work Products ═══════════════════════════════════════ -->
+    <div class="detail-tab-panel" id="detailPanelWorkProducts">
+      <p class="today-section-explain">Generation is not yet available for any of these. This structure is ready for the next intelligence release.</p>
+      <div class="workprod-grid" id="workProductsGrid"></div>
+    </div>
+
+  </div>
+</dialog>
+
+<!-- ══ Dismiss confirmation dialog ═════════════════════════════════ -->
+<dialog id="dismissDialog" class="detail-dialog dismiss-dialog" aria-labelledby="dismissDialogTitle">
+  <div class="detail-head">
+    <h2 id="dismissDialogTitle">Dismiss Signal</h2>
+    <button class="detail-close" id="dismissClose" type="button" aria-label="Close">✕</button>
+  </div>
+  <div class="detail-body">
+    <p>This marks the signal Dismissed. A reason is required.</p>
+    <div class="field">
+      <label for="dismissReasonInput">Dismissal Reason</label>
+      <textarea id="dismissReasonInput" rows="3"></textarea>
+    </div>
+    <p class="wf-error" id="dismissError" role="alert" hidden></p>
+    <div class="wf-actions">
+      <button type="button" class="wf-save-btn" id="dismissConfirmBtn">Confirm Dismiss</button>
+      <button type="button" class="wf-tool-btn" id="dismissCancelBtn">Cancel</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- ══ Matter picker dialog (Promote / Attach) ═════════════════════ -->
+<dialog id="matterPickerDialog" class="detail-dialog" aria-labelledby="matterPickerTitle">
+  <div class="detail-head">
+    <h2 id="matterPickerTitle">Attach to Policy Matter</h2>
+    <button class="detail-close" id="matterPickerClose" type="button" aria-label="Close">✕</button>
+  </div>
+  <div class="detail-body">
+    <p class="wf-section-heading">Existing Active Matters</p>
+    <div id="matterPickerList"></div>
+
+    <p class="wf-section-heading">Or Create a New Matter</p>
+    <div class="field"><label for="mpTitle">Title</label><input type="text" id="mpTitle"></div>
+    <div class="field-grid wf-grid">
+      <div class="field"><label for="mpCategory">Issue Category</label><input type="text" id="mpCategory"></div>
+      <div class="field"><label for="mpJurisdiction">Jurisdiction</label><input type="text" id="mpJurisdiction"></div>
+      <div class="field"><label for="mpCounty">County</label><input type="text" id="mpCounty"></div>
+    </div>
+    <button type="button" class="wf-save-btn" id="mpCreateBtn">Create Matter &amp; Attach</button>
+  </div>
+</dialog>
+
+<!-- ══ Policy Matter detail dialog ═════════════════════════════════ -->
+<dialog id="matterDialog" class="detail-dialog" aria-labelledby="matterDialogTitle">
+  <div class="detail-head">
+    <h2 id="matterDialogTitle">Policy Matter</h2>
+    <button class="detail-close" id="matterDialogClose" type="button" aria-label="Close">✕</button>
+  </div>
+  <div class="detail-body">
+    <p class="wf-error" id="matterStaleWarning" role="alert" hidden>
+      This Policy Matter has been updated by someone else. Your unsaved changes here are preserved —
+      <button type="button" class="pw-toggle" id="matterReloadLatestBtn" style="padding:0;text-decoration:underline">Reload Latest</button> to see them, or keep editing and Save to try again.
+    </p>
+    <div class="field"><label for="mTitle">Title</label><input type="text" id="mTitle"></div>
+    <div class="field-grid wf-grid">
+      <div class="field"><label for="mCategory">Issue Category</label><input type="text" id="mCategory"></div>
+      <div class="field"><label for="mJurisdiction">Jurisdiction</label><input type="text" id="mJurisdiction"></div>
+      <div class="field"><label for="mCounty">County</label><input type="text" id="mCounty"></div>
+      <div class="field">
+        <label for="mStatus">Matter Status</label>
+        <select id="mStatus"><option>Monitoring</option><option>Action Required</option><option>Resolved</option></select>
+      </div>
+      <div class="field">
+        <label for="mPriority">Matter Priority</label>
+        <select id="mPriority"><option>High</option><option>Medium</option><option>Monitor</option></select>
+      </div>
+      <div class="field"><label for="mFollowUp">Follow-Up Date</label><input type="date" id="mFollowUp"></div>
+      <div class="field">
+        <label for="mAssignedOwner">Assigned Owner</label>
+        <select id="mAssignedOwner"><option value="">— Unassigned —</option></select>
+      </div>
+    </div>
+    <div class="field"><label for="mNextAction">Next Action</label><input type="text" id="mNextAction"></div>
+    <div class="field"><label for="mNotes">Notes</label><textarea id="mNotes" rows="3"></textarea></div>
+
+    <div class="wf-actions">
+      <button type="button" class="wf-save-btn" id="matterSaveBtn">Save Changes</button>
+      <span class="wf-saved-note" id="mAttribution">Saved to your team's shared workspace.</span>
+    </div>
+
+    <p class="wf-section-heading">Attached Signals (<span id="matterSignalCount">0</span>)</p>
+    <div id="matterSignalsList"></div>
+
+    <p class="wf-section-heading">Matter History</p>
+    <div id="matterHistory" class="wf-history"></div>
+  </div>
+</dialog>
+
+<!-- ══ Today's Activity — full list ════════════════════════════════ -->
+<dialog id="activityDialog" class="detail-dialog" aria-labelledby="activityDialogTitle">
+  <div class="detail-head">
+    <h2 id="activityDialogTitle">Today's Activity — All</h2>
+    <button class="detail-close" id="activityDialogClose" type="button" aria-label="Close">✕</button>
+  </div>
+  <div class="detail-body">
+    <div id="todaysActivityFull" class="wf-history"></div>
+  </div>
+</dialog>
+
+<!-- ══ Glossary ═══════════════════════════════════════════════════ -->
+<dialog id="glossaryDialog" class="detail-dialog" aria-labelledby="glossaryDialogTitle">
+  <div class="detail-head">
+    <h2 id="glossaryDialogTitle">Glossary</h2>
+    <button class="detail-close" id="glossaryClose" type="button" aria-label="Close">✕</button>
+  </div>
+  <div class="detail-body">
+    <ul class="glossary-list" id="glossaryList"></ul>
+  </div>
+</dialog>
+
+<!-- ══ First-time orientation ═══════════════════════════════════════ -->
+<dialog id="orientationDialog" class="detail-dialog" aria-labelledby="orientationDialogTitle">
+  <div class="detail-head">
+    <h2 id="orientationDialogTitle">Welcome to Watchdog EWS</h2>
+    <button class="detail-close" id="orientationClose" type="button" aria-label="Close">✕</button>
+  </div>
+  <div class="detail-body">
+    <p>Watchdog watches North Texas government activity so you don't have to check it manually. The workflow:</p>
+    <ol class="orientation-steps">
+      <li>Review newly detected intelligence.</li>
+      <li>Decide whether to dismiss, monitor, or escalate.</li>
+      <li>Manage significant issues as Active Matters.</li>
+      <li>Use Today to see what requires attention.</li>
+    </ol>
+    <p class="wf-required-hint">You can reopen this anytime, and look up any term, from the Glossary button in the header.</p>
+    <div class="wf-actions">
+      <button type="button" class="wf-save-btn" id="orientationDismissBtn">Got it</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- ══ Legacy workspace migration assistant ═══════════════════════════
+     Never actually triggers in this mirror (no legacy localStorage key
+     is ever present in a fresh browser) — kept only so the markup this
+     dialog's rendering functions target still exists in the DOM. ────── -->
+<dialog id="migrationDialog" class="detail-dialog" aria-labelledby="migrationDialogTitle">
+  <div class="detail-head">
+    <h2 id="migrationDialogTitle">Import Your Local Watchdog Workspace</h2>
+  </div>
+  <div class="detail-body">
+    <p>This browser contains a local Watchdog workspace. Importing will attach its personal decisions to this account.</p>
+    <p class="wf-section-heading">What will be imported</p>
+    <dl class="dl-grid">
+      <div class="dl-row"><dt>Reviewed</dt><dd id="migCountReviewed">0</dd></div>
+      <div class="dl-row"><dt>Monitoring</dt><dd id="migCountMonitoring">0</dd></div>
+      <div class="dl-row"><dt>Action Required</dt><dd id="migCountActionRequired">0</dd></div>
+      <div class="dl-row"><dt>Closed</dt><dd id="migCountClosed">0</dd></div>
+      <div class="dl-row"><dt>Dismissed</dt><dd id="migCountDismissed">0</dd></div>
+    </dl>
+    <p class="wf-required-hint">Your local workspace is not deleted or modified by this import — it stays in this browser as a backup. You can use Export Workspace from the Workspace menu first if you'd like an extra copy.</p>
+    <p id="migResultMsg" role="status" hidden></p>
+    <div class="wf-actions">
+      <button type="button" class="wf-save-btn" id="migImportBtn">Import Personal Workspace</button>
+      <button type="button" class="wf-tool-btn" id="migCancelBtn">Not Now</button>
+    </div>
+  </div>
+</dialog>
+
+</div><!-- /#appRoot -->
+
+<!-- ══ WATCHDOG V8 PUBLIC REVIEW MIRROR ══════════════════════════════
+     No Supabase CDN script here — this inert stub only exists so
+     dashboard.js's `typeof supabase === 'undefined'` guard (a fallback
+     check that's never actually exercised, since WatchdogAuth.getClient
+     always exists below) still parses. Calling createClient() would
+     throw rather than silently doing anything, so it's not just unused
+     but actively unable to make a network connection if some future
+     edit ever did call it. fixtures.js must load before auth.js /
+     repository.js / realtime.js, since those fixture modules read
+     window.WATCHDOG_FIXTURES directly. ════════════════════════════════ -->
+<script>
+  window.supabase = { createClient: function () { throw new Error('This is a static design-review mirror — no Supabase client is available.'); } };
+</script>
+<script src="fixtures.js"></script>
+<script src="security.js"></script>
+<script src="auth.js"></script>
+<script src="repository.js"></script>
+<script src="realtime.js"></script>
+<script src="migration.js"></script>
+<script src="editFormLogic.js"></script>
+<script src="dashboard.js"></script>
+<script src="app-boot.js"></script>
+</body>
+</html>
