@@ -4,25 +4,15 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<title>Watchdog EWS — DESIGN REVIEW MIRROR (NOT PRODUCTION)</title>
+<title>Watchdog EWS — DESIGN REVIEW MIRROR (V8, NOT PRODUCTION)</title>
 <link rel="stylesheet" href="dashboard.css">
-<style>
-  #reviewMirrorBanner {
-    position: sticky; top: 0; z-index: 9999;
-    background: #7a1f1f; color: #fff; font: 600 12.5px/1.4 system-ui, sans-serif;
-    text-align: center; padding: 5px 10px; letter-spacing: .02em;
-  }
-  #reviewMirrorBanner a { color: #ffd9d9; }
-</style>
 </head>
 <body>
-
-<div id="reviewMirrorBanner">DESIGN REVIEW — NOT PRODUCTION — fabricated data only, read-only, no login</div>
+<div id="reviewMirrorBanner" style="position:sticky;top:0;z-index:9999;background:#7a1f1f;color:#fff;font:600 12.5px/1.4 system-ui,sans-serif;text-align:center;padding:5px 10px;">DESIGN REVIEW (V8) — NOT PRODUCTION — fabricated data only, read-only, no login</div>
 
 <!-- ══ Auth gate — shown until requireActiveSession() resolves. No
      protected content, and no dashboard.js boot, happens before this
-     resolves. In this mirror requireActiveSession() resolves immediately
-     to a fixture profile — this state is visible only for an instant. ── -->
+     resolves. ══════════════════════════════════════════════════════ -->
 <div id="authGate" class="state loading" style="min-height:100vh;display:flex;align-items:center;justify-content:center;">
   <div style="text-align:center">
     <div class="spinner" aria-hidden="true"></div>
@@ -31,8 +21,7 @@
 </div>
 
 <!-- ══ Shown instead of the app when the V4 database schema has not
-     been installed yet. Never triggered in this mirror — kept only so
-     dashboard/app-boot's branch logic matches production exactly. ══════ -->
+     been installed yet (pre-migration-approval window). ══════════════ -->
 <div id="schemaMissingNotice" hidden style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px">
   <div style="max-width:480px;text-align:center">
     <h1 style="font-size:20px">Watchdog EWS setup incomplete</h1>
@@ -49,76 +38,66 @@
 
 <a class="skip-link" href="#main">Skip to signal feed</a>
 
-<!-- ══ Header ══════════════════════════════════════════════════ -->
+<!-- ══ V8 Part 3 — compact header ═══════════════════════════════════
+     Watchdog EWS + subtitle, one connection-status indicator (visible
+     only on an actual sync/connectivity failure — silent when things are
+     working, per Part 3), and exactly one account/workspace menu. Every
+     secondary control that used to sit loose in the header (user name,
+     role, Glossary, Today's Activity, Sign Out, and the personal-backup
+     maintenance controls) now lives inside that one menu. ═════════════ -->
 <header class="hdr">
   <div class="hdr-id">
-    <div class="hdr-title-row">
-      <h1>Watchdog EWS</h1>
-      <span class="conn-badge" id="connBadge"><span class="conn-dot" aria-hidden="true"></span>Data Connected</span>
-    </div>
+    <h1>Watchdog EWS</h1>
     <p class="hdr-instance">North Texas Policy Tracker</p>
   </div>
   <div class="hdr-status">
+    <!-- Quiet by default (Part 3): only ever unhidden by JS when the
+         personal workspace fails to sync — never shown, and never a
+         "Data Connected" pill, while everything is working normally. -->
+    <span class="conn-badge conn-badge-error" id="connBadge" hidden role="alert"><span class="conn-dot" aria-hidden="true"></span><span id="connBadgeText">Could not sync your workspace</span></span>
     <details class="workspace-menu" id="workspaceMenu">
-      <summary class="wf-tool-btn">Workspace ▾</summary>
+      <summary class="wf-tool-btn" id="accountMenuTrigger">Account ▾</summary>
       <div class="workspace-menu-panel">
+        <p class="wsm-heading" id="hdrUserDisplay" title="Signed in as">—</p>
+        <p class="hdr-meta" id="hdrUserRole">—</p>
+        <div class="wsm-divider"></div>
+        <button type="button" class="wf-tool-btn" id="glossaryBtn">Glossary</button>
+        <div class="wsm-divider"></div>
         <p class="wsm-heading">Today's Activity</p>
         <div id="todaysActivityMini" class="wf-history"></div>
         <button type="button" class="wf-tool-btn" id="viewAllActivityBtn">View All Activity</button>
         <div class="wsm-divider"></div>
-        <button class="wf-tool-btn" id="exportBtn" type="button">Export Workspace</button>
-        <button class="wf-tool-btn" id="importBtn" type="button">Import Workspace</button>
-        <input type="file" id="importFile" accept="application/json,.json" hidden>
-        <div class="wsm-divider"></div>
-        <button class="wf-tool-btn wf-tool-danger" id="resetWorkspaceBtn" type="button">Reset Workspace</button>
+        <!-- V8 Part 3: renamed to say exactly what each control does.
+             "Import Workspace" is gone entirely — it never worked once
+             signed in (see importWorkspaceFile() in dashboard.js), so a
+             precise rename couldn't make it a real affordance; the
+             underlying function is untouched in case anonymous/local
+             mode returns. "Reset Workspace" is renamed because it does
+             NOT reset your synced workflow decisions or shared Policy
+             Matters — only a local browser cache of activity-history
+             overflow (see resetWorkspace() in dashboard.js). -->
+        <p class="wsm-heading">Personal Backup</p>
+        <button class="wf-tool-btn" id="exportBtn" type="button">Download Workspace Backup</button>
+        <button class="wf-tool-btn wf-tool-danger" id="resetWorkspaceBtn" type="button">Clear Locally Cached Activity History</button>
         <span class="wf-tool-msg" id="wfToolMsg" role="status" aria-live="polite"></span>
+        <div class="wsm-divider"></div>
+        <button type="button" class="wf-tool-btn" id="signOutBtn">Sign Out</button>
       </div>
     </details>
-    <span class="hdr-meta" id="hdrUserDisplay" title="Signed in as">—</span>
-    <span class="hdr-meta" id="hdrUserRole">—</span>
-    <button type="button" class="wf-tool-btn" id="glossaryBtn">Glossary</button>
-    <button type="button" class="wf-tool-btn" id="signOutBtn">Sign Out</button>
   </div>
 </header>
 
-<!-- ══ Workspace sync notice ═══════════════════════════════════════ -->
-<div class="local-notice" role="note">
-  <span aria-hidden="true">🔒</span>
-  <span id="localNoticeText">Loading your synced workspace…</span>
-</div>
-
-<!-- ══ Territory summary — shown on Today only; other views show just
-     their own feed count instead of repeating this bar (product-clarity
-     §11/§12). ═════════════════════════════════════════════════════ -->
-<section class="overview" id="overviewStrip" aria-label="Territory summary">
-  <div class="stat s-high"><span class="stat-n" id="cHigh">—</span><span class="stat-l">High Priority</span></div>
-  <div class="stat s-med"><span class="stat-n" id="cMed">—</span><span class="stat-l">Medium Priority</span></div>
-  <div class="stat s-mon"><span class="stat-n" id="cMon">—</span><span class="stat-l">Monitor</span></div>
-  <div class="stat s-juris"><span class="stat-n" id="cJuris">—</span><span class="stat-l">Jurisdictions</span></div>
-  <div class="stat s-src"><span class="stat-n" id="cSources">—</span><span class="stat-l">Sources <span class="info-tip"><button type="button" class="info-tip-btn" aria-label="What does this count?">?</button><span class="info-tip-text" role="tooltip">Distinct sources represented in the signals currently shown here — not the full Sources registry (see System → Sources), which also includes sources with no recent activity.</span></span></span></div>
-  <div class="stat s-tot"><span class="stat-n" id="cTerritory">—</span><span class="stat-l">Signals in Territory <span class="info-tip"><button type="button" class="info-tip-btn" aria-label="What does this count?">?</button><span class="info-tip-text" role="tooltip">Canonical signals after hiding likely duplicates of the same real-world event — not the total row count in the database, which also includes those hidden duplicates.</span></span></span></div>
-</section>
-
-<!-- ══ Review Progress ══════════════════════════════════════════════ -->
-<section class="rp-panel" id="reviewProgress" aria-label="Review progress">
-  <p class="section-label">Review Progress</p>
-  <div class="rp-bar-wrap"><div class="rp-bar-fill" id="rpBarFill" style="width:0%"></div></div>
-  <p class="rp-bar-label" id="rpBarLabel">0 / 0 signals reviewed (0%)</p>
-  <div class="rp-metrics">
-    <button type="button" class="rp-metric" data-rp-goto="unreviewed"><span class="rp-metric-n" id="rpRemaining">—</span><span class="rp-metric-l">Remaining</span></button>
-    <button type="button" class="rp-metric" data-rp-goto="reviewed"><span class="rp-metric-n" id="rpReviewed">—</span><span class="rp-metric-l">Reviewed</span></button>
-    <button type="button" class="rp-metric" data-rp-goto="reviewed"><span class="rp-metric-n" id="rpReviewedToday">—</span><span class="rp-metric-l">Reviewed Today</span></button>
-    <button type="button" class="rp-metric" data-rp-goto="completed"><span class="rp-metric-n" id="rpCompletedToday">—</span><span class="rp-metric-l">Completed Today</span></button>
-    <button type="button" class="rp-metric" data-rp-goto="matters"><span class="rp-metric-n" id="rpMattersToday">—</span><span class="rp-metric-l">Matters Updated Today</span></button>
-  </div>
-</section>
-
-<!-- ══ Primary workspace navigation ═════════════════════════════════ -->
+<!-- ══ Primary workspace navigation ═════════════════════════════════
+     Three work-oriented destinations (V8 Part 2 — Reports removed while
+     unavailable; its section and code are untouched, just unreachable
+     from here). Administrative infrastructure (Sources / Validation
+     Queue / System Health) lives in the subordinate "System" menu, not
+     as an equal tab — it must never visually compete with the GAD's
+     daily work. ══════════════════════════════════════════════════════ -->
 <nav class="primary-nav" id="primaryNav" role="tablist" aria-label="Workspace navigation">
   <button class="pnav-tab active" role="tab" aria-selected="true" data-primary="today">Today</button>
   <button class="pnav-tab" role="tab" aria-selected="false" data-primary="signals">Intelligence</button>
   <button class="pnav-tab" role="tab" aria-selected="false" data-primary="matters">Active Matters</button>
-  <button class="pnav-tab" role="tab" aria-selected="false" data-primary="reports">Reports</button>
   <details class="system-menu" id="systemMenu">
     <summary class="pnav-system-trigger" id="systemMenuTrigger">System ▾</summary>
     <div class="system-menu-panel">
@@ -288,6 +267,9 @@
     <div class="feed-head">
       <h2>Intelligence</h2>
       <span class="feed-count" id="feedCount"></span>
+      <!-- V8 Part 10: the one place a review count still appears — no
+           progress bar, no metric wall, just this. -->
+      <span class="feed-count feed-count-needs-review" id="intelligenceNeedsReviewCount"></span>
     </div>
     <div id="sigList" class="sig-list" aria-live="polite">
       <div class="state loading">
@@ -325,7 +307,7 @@
     <div id="todayContent"></div>
   </section>
 
-  <!-- ══ Reports (placeholder destination) ═════════════════════════ -->
+  <!-- ══ Reports (placeholder destination — product-clarity §9) ═════ -->
   <section class="feed" id="reportsSection" hidden>
     <div class="feed-head"><h2>Reports</h2></div>
     <div class="state-rich">
@@ -344,7 +326,7 @@
       </div>
       <button type="button" class="reset-btn" id="scGotoQuarantineBtn">Validation Queue →</button>
     </div>
-    <p class="today-section-explain" id="sourceCoverageExplain">The registry of every organization, endpoint, and reporter Watchdog trusts and monitors across the four-county territory.</p>
+    <p class="today-section-explain" id="sourceCoverageExplain">The registry of every organization, endpoint, and reporter Watchdog trusts and monitors — separate from the signals currently in the feed. "Monitored" means registered here, whether or not it has produced a signal recently; "active" means Watchdog is currently collecting from it.</p>
     <div class="tabs" id="sourceCoverageSubNav" role="tablist" aria-label="Sources view">
       <button class="tab active" role="tab" aria-selected="true" data-sc-sub="organizations">Organizations</button>
       <button class="tab" role="tab" aria-selected="false" data-sc-sub="endpoints">Endpoints</button>
@@ -413,7 +395,13 @@
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-<!-- ══ Signal Intelligence Workspace (detail dialog) ═══════════════ -->
+<!-- ══ Signal Intelligence Workspace (detail dialog) ═══════════════
+     Permanent home for issue intelligence. Four consolidated sections
+     organized around the three questions a GAD actually needs answered
+     right now: what's happening & what supports it (Issue Brief), why it
+     matters (Analysis), what to do (Action). Work Products is hidden
+     (V8 Part 2) until it contains a functioning product — its section
+     and code are untouched below, just unreachable from this tab strip. ── -->
 <dialog id="detailDialog" class="detail-dialog" aria-labelledby="detailTitle">
   <div class="detail-head">
     <h2 id="detailTitle">Signal detail</h2>
@@ -423,11 +411,11 @@
     <button class="detail-tab active" role="tab" aria-selected="true" data-dtab="brief">Issue Brief</button>
     <button class="detail-tab" role="tab" aria-selected="false" data-dtab="analysis">Analysis</button>
     <button class="detail-tab" role="tab" aria-selected="false" data-dtab="action">Action</button>
-    <button class="detail-tab" role="tab" aria-selected="false" data-dtab="workproducts">Work Products</button>
   </div>
   <div class="detail-body" id="detailBody">
 
-    <!-- ══ 1. Issue Brief ══════════════════════════════════════════ -->
+    <!-- ══ 1. Issue Brief — what's happening, and what supports it
+         (former Overview + Evidence + Timeline) ══════════════════════ -->
     <div class="detail-tab-panel active" id="detailPanelBrief">
       <div class="brief-grid">
         <div class="brief-facts">
@@ -445,7 +433,11 @@
       </div>
     </div>
 
-    <!-- ══ 2. Analysis ═══════════════════════════════════════════════ -->
+    <!-- ══ 2. Analysis — why it matters (intelligence-ready placeholder,
+         structured for the future Local Policy Intelligence Doctrine:
+         Principles → Evidence → Local and Geographic Context →
+         Materiality → Position → Priority → Response → Governance →
+         Outcome) ═══════════════════════════════════════════════════ -->
     <div class="detail-tab-panel" id="detailPanelAnalysis">
       <div id="detailAnalysisContent">
         <div class="intel-empty">
@@ -464,70 +456,100 @@
         </div>
       </div>
 
-      <section class="wf-section" aria-label="Manual Intelligence Pilot" id="manualPilotSection" hidden>
-        <p class="wf-section-heading">Manual Intelligence Pilot</p>
-        <p class="state-detail">
-          Watchdog prepares the evidence and methodology. ChatGPT drafts the analysis.
-          A Government Affairs professional reviews and approves the result.
-        </p>
-        <p class="wf-required-hint">
-          No analysis is generated inside Watchdog. No paid API is used. Imported content remains a Draft.
-          Human review is mandatory. Organizational positions and actions are never approved automatically.
-        </p>
+      <!-- ══ Intelligence Tools (V8 Part 8) — the Manual Intelligence Pilot
+           (V7.1), Administrator-only, now inside a collapsible section:
+           starts collapsed once a usable analysis already exists (see
+           loadAndRenderIntelligence in dashboard.js), open when there's
+           nothing to review yet. Zero-cost bridge to Jason's existing
+           ChatGPT access: Watchdog assembles evidence, Jason copies it to
+           ChatGPT by hand, pastes the reply back, Watchdog validates and
+           saves it as a Draft requiring human review. No AI API is called
+           by Watchdog anywhere in this section. See
+           docs/watchdog-manual-intelligence-pilot.md. ══════════════════ -->
+      <details class="wf-section intel-tools-details" id="intelToolsDetails" hidden>
+        <summary class="wf-section-heading intel-tools-summary">Intelligence Tools</summary>
+        <section aria-label="Manual Intelligence Pilot" id="manualPilotSection">
+          <p class="state-detail">
+            Watchdog prepares the evidence and methodology. ChatGPT drafts the analysis.
+            A Government Affairs professional reviews and approves the result.
+          </p>
+          <p class="wf-required-hint">
+            No analysis is generated inside Watchdog. No paid API is used. Imported content remains a Draft.
+            Human review is mandatory. Organizational positions and actions are never approved automatically.
+          </p>
 
-        <ol class="manual-pilot-steps">
-          <li>
-            <p class="manual-pilot-step-title">1. Build Intelligence Packet</p>
-            <button type="button" class="wf-tool-btn" id="manualPilotBuildBtn">Build Intelligence Packet</button>
-            <div id="manualPilotPacketMeta"></div>
-          </li>
+          <ol class="manual-pilot-steps">
+            <li>
+              <p class="manual-pilot-step-title">1. Build Intelligence Packet</p>
+              <button type="button" class="wf-tool-btn" id="manualPilotBuildBtn">Build Intelligence Packet</button>
+              <div id="manualPilotPacketMeta"></div>
+            </li>
 
-          <li>
-            <p class="manual-pilot-step-title">2. Copy for ChatGPT</p>
-            <div id="manualPilotPacketArea" hidden>
-              <textarea id="manualPilotPacketText" class="manual-pilot-textarea" readonly rows="6"></textarea>
-              <div class="wf-actions">
-                <button type="button" class="wf-tool-btn" id="manualPilotCopyBtn">Copy for ChatGPT</button>
-                <button type="button" class="wf-tool-btn" id="manualPilotDownloadBtn">Download Packet</button>
-                <span id="manualPilotCopyStatus" class="state-detail" role="status"></span>
+            <li>
+              <p class="manual-pilot-step-title">2. Copy for ChatGPT</p>
+              <div id="manualPilotPacketArea" hidden>
+                <textarea id="manualPilotPacketText" class="manual-pilot-textarea" readonly rows="6"></textarea>
+                <div class="wf-actions">
+                  <button type="button" class="wf-tool-btn" id="manualPilotCopyBtn">Copy for ChatGPT</button>
+                  <button type="button" class="wf-tool-btn" id="manualPilotDownloadBtn">Download Packet</button>
+                  <span id="manualPilotCopyStatus" class="state-detail" role="status"></span>
+                </div>
               </div>
-            </div>
-          </li>
+            </li>
 
-          <li>
-            <p class="manual-pilot-step-title">3. Import ChatGPT Response</p>
-            <div id="manualPilotImportArea" hidden>
-              <textarea id="manualPilotResponseInput" class="manual-pilot-textarea" rows="6"
-                placeholder="Paste ChatGPT's fenced JSON response here"></textarea>
-              <div class="wf-actions">
-                <label class="wf-tool-btn manual-pilot-upload-label">
-                  Upload Response
-                  <input type="file" id="manualPilotUploadInput" accept="application/json,.json,.txt" hidden />
-                </label>
-                <button type="button" class="wf-tool-btn" id="manualPilotValidateBtn">Validate</button>
-                <button type="button" class="wf-tool-btn" id="manualPilotCancelImportBtn">Cancel</button>
+            <li>
+              <p class="manual-pilot-step-title">3. Import ChatGPT Response</p>
+              <div id="manualPilotImportArea" hidden>
+                <textarea id="manualPilotResponseInput" class="manual-pilot-textarea" rows="6"
+                  placeholder="Paste ChatGPT's fenced JSON response here"></textarea>
+                <div class="wf-actions">
+                  <label class="wf-tool-btn manual-pilot-upload-label">
+                    Upload Response
+                    <input type="file" id="manualPilotUploadInput" accept="application/json,.json,.txt" hidden />
+                  </label>
+                  <button type="button" class="wf-tool-btn" id="manualPilotValidateBtn">Validate</button>
+                  <button type="button" class="wf-tool-btn" id="manualPilotCancelImportBtn">Cancel</button>
+                </div>
+                <p class="wf-error" id="manualPilotImportError" role="alert" hidden></p>
               </div>
-              <p class="wf-error" id="manualPilotImportError" role="alert" hidden></p>
-            </div>
-          </li>
+            </li>
 
-          <li>
-            <p class="manual-pilot-step-title">4. Review and Save Draft</p>
-            <div id="manualPilotPreviewArea" hidden></div>
-          </li>
-        </ol>
+            <li>
+              <p class="manual-pilot-step-title">4. Review and Save Draft</p>
+              <div id="manualPilotPreviewArea" hidden></div>
+            </li>
+          </ol>
+        </section>
+      </details>
+
+      <!-- ══ V8 Part 8: Human Review / regeneration controls live in
+           Analysis, not Action — Analysis owns the whole intelligence
+           lifecycle. Administrator-only to generate (currently hidden —
+           direct AI generation stays disabled); Administrator/
+           Collaborator to review whatever analysis already exists. ──── -->
+      <section class="wf-section" aria-label="Intelligence Generation" id="intelGenSection">
+        <p class="wf-section-heading">Human Review</p>
+        <div id="intelGenContent"></div>
       </section>
     </div>
 
-    <!-- ══ 3. Action ═══════════════════════════════════════════════ -->
+    <!-- ══ 3. Action — what we should do (former Recommended Response +
+         all personal/shared workflow controls) ═══════════════════════ -->
     <div class="detail-tab-panel" id="detailPanelAction">
-      <div class="detail-primary-actions" id="detailPrimaryActions"></div>
-
-      <section class="wf-section" aria-label="Intelligence Generation" id="intelGenSection">
-        <p class="wf-section-heading">Intelligence Generation</p>
-        <div id="intelGenContent"></div>
+      <!-- ══ V8 Part 9: the recommendation leads, not the forms — shows
+           currently-recorded next actions/ownership first if any exist,
+           then Recommended Next Step / Response Options / Governance
+           Route / Opportunity for Influence / Relationship
+           Considerations (see renderDetailResponse /
+           renderActionResponseFromAnalysis). Operator controls to act on
+           it follow below. ══════════════════════════════════════════ -->
+      <section class="wf-section" aria-label="Recommended Response">
+        <div id="detailResponse"></div>
       </section>
 
+      <div class="detail-primary-actions" id="detailPrimaryActions"></div>
+
+      <!-- ══ My Workflow (personal — synced to your account) ═══════ -->
       <section class="wf-section" aria-label="My Workflow">
         <p class="wf-section-heading">My Workflow <span class="wf-local-tag">personal</span></p>
 
@@ -582,6 +604,8 @@
         </div>
       </section>
 
+      <!-- ══ Shared Coordination (shared — Administrator/Collaborator edit,
+           Operator/Viewer read-only) ═══════════════════════════════ -->
       <section class="wf-section" aria-label="Shared Coordination">
         <p class="wf-section-heading">Shared Coordination <span class="wf-local-tag">shared</span></p>
 
@@ -623,6 +647,8 @@
         </div>
       </section>
 
+      <!-- ══ Linked Active Matters (ownership lives here when the signal
+           is attached to a Matter — see renderDetailResponse) ════════ -->
       <section class="wf-section" aria-label="Linked Active Matters">
         <p class="wf-section-heading">Linked Active Matters</p>
         <div id="signalMatterLinks"></div>
@@ -632,13 +658,10 @@
         </div>
       </section>
 
-      <section class="wf-section" aria-label="Future Recommended Response">
-        <p class="wf-section-heading">Future Recommended Response &amp; Routing</p>
-        <div id="detailResponse"></div>
-      </section>
     </div>
 
-    <!-- ══ 4. Work Products ═══════════════════════════════════════ -->
+    <!-- ══ 4. Work Products — what we should produce (labeled
+         placeholders — no fake downloads) ═══════════════════════════ -->
     <div class="detail-tab-panel" id="detailPanelWorkProducts">
       <p class="today-section-explain">Generation is not yet available for any of these. This structure is ready for the next intelligence release.</p>
       <div class="workprod-grid" id="workProductsGrid"></div>
@@ -745,7 +768,7 @@
   </div>
 </dialog>
 
-<!-- ══ Glossary ═══════════════════════════════════════════════════ -->
+<!-- ══ Glossary (help control — product-clarity §13) ═══════════════ -->
 <dialog id="glossaryDialog" class="detail-dialog" aria-labelledby="glossaryDialogTitle">
   <div class="detail-head">
     <h2 id="glossaryDialogTitle">Glossary</h2>
@@ -756,7 +779,8 @@
   </div>
 </dialog>
 
-<!-- ══ First-time orientation ═══════════════════════════════════════ -->
+<!-- ══ First-time orientation (lightweight, dismissible, never blocks
+     experienced use — product-clarity §13) ═══════════════════════════ -->
 <dialog id="orientationDialog" class="detail-dialog" aria-labelledby="orientationDialogTitle">
   <div class="detail-head">
     <h2 id="orientationDialogTitle">Welcome to Watchdog EWS</h2>
@@ -777,10 +801,7 @@
   </div>
 </dialog>
 
-<!-- ══ Legacy workspace migration assistant ═══════════════════════════
-     Never actually triggers in this mirror (no legacy localStorage key
-     is ever present in a fresh browser) — kept only so the markup this
-     dialog's rendering functions target still exists in the DOM. ────── -->
+<!-- ══ Legacy workspace migration assistant ═══════════════════════════ -->
 <dialog id="migrationDialog" class="detail-dialog" aria-labelledby="migrationDialogTitle">
   <div class="detail-head">
     <h2 id="migrationDialogTitle">Import Your Local Watchdog Workspace</h2>
@@ -806,19 +827,7 @@
 
 </div><!-- /#appRoot -->
 
-<!-- ══ WATCHDOG V8 PUBLIC REVIEW MIRROR ══════════════════════════════
-     No Supabase CDN script here — this inert stub only exists so
-     dashboard.js's `typeof supabase === 'undefined'` guard (a fallback
-     check that's never actually exercised, since WatchdogAuth.getClient
-     always exists below) still parses. Calling createClient() would
-     throw rather than silently doing anything, so it's not just unused
-     but actively unable to make a network connection if some future
-     edit ever did call it. fixtures.js must load before auth.js /
-     repository.js / realtime.js, since those fixture modules read
-     window.WATCHDOG_FIXTURES directly. ════════════════════════════════ -->
-<script>
-  window.supabase = { createClient: function () { throw new Error('This is a static design-review mirror — no Supabase client is available.'); } };
-</script>
+<script>window.supabase = { createClient: function () { throw new Error("no supabase in this mirror"); } };</script>
 <script src="fixtures.js"></script>
 <script src="security.js"></script>
 <script src="auth.js"></script>
@@ -826,6 +835,8 @@
 <script src="realtime.js"></script>
 <script src="migration.js"></script>
 <script src="editFormLogic.js"></script>
+<script src="reviewSemantics.js"></script>
+<script src="analysisRendering.js"></script>
 <script src="dashboard.js"></script>
 <script src="app-boot.js"></script>
 </body>

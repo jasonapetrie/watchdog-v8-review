@@ -3,7 +3,7 @@
 
   async function signOutToPublic() {
     await window.WatchdogAuth.signOut();
-    window.location.reload();
+    window.location.replace('index.html');
   }
 
   document.addEventListener('DOMContentLoaded', async () => {

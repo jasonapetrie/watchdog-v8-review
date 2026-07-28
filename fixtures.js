@@ -264,7 +264,34 @@
       analyst_note: 'AI-generated draft — human review required.',
       organizational_relevance_rationale: 'Transportation access is a recurring member-relevant theme.',
       geographic_significance_rationale: 'Single-corridor item, not a policy change.',
-      raw_imported_response: { marker: 'FIXTURE-SANITIZED-BASELINE-SPECIMEN' },
+      // V8: the full original (sanitized) ChatGPT response, preserved
+      // verbatim alongside the flattened columns above — this is what
+      // lets the V8 Analysis tab distinguish insufficient_evidence from
+      // no_position_established, render evidence gaps/contradictions and
+      // practical consequences as real lists, and surface a recommended
+      // next step, exactly as a genuine manual-pilot import would.
+      raw_imported_response: {
+        marker: 'FIXTURE-SANITIZED-BASELINE-SPECIMEN',
+        evidence_quality: {
+          level: 'medium',
+          gaps: ['No draft engineering scope attached to the agenda item.', 'Funding split across listed bond projects not itemized.', 'Timeline for construction start not stated.'],
+          contradictions: ['Prior court discussion referenced in the packet but not linked to a specific agenda item.'],
+        },
+        practical_consequences: [
+          'Prioritization could affect which segment of FM 552 sees construction first.',
+          'Nearby property access may be affected during construction on whichever segment is prioritized.',
+        ],
+        position: {
+          pathway: 'insufficient_evidence',
+          potential_position: 'No adopted position was found covering road-bond prioritization sequencing specifically.',
+          confidence: 'low',
+        },
+        response: {
+          proposed_options: ['Continue monitoring', 'Request field context'],
+          preferred_option: 'Continue monitoring until the draft prioritization list is published.',
+        },
+        governance: { required: false, recommended_route: 'No position is being proposed at this stage; monitor for the draft prioritization list.', approval_needed_from: [] },
+      },
       edit_history: [
         { editor: PROFILE.id, edited_at: iso(0, 15), changed_fields: ['executive_summary'], material_change: false, note: null },
       ],

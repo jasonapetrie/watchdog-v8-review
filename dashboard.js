@@ -650,12 +650,18 @@ async function refreshSharedAuditEvents() {
   }
 }
 
+// V8 Part 3: quiet by default. A successful sync shows nothing at all —
+// it no longer competes with the header for attention with a permanent
+// full-width banner. Only a real sync failure becomes visible, and only
+// then, as a compact error indicator.
 function updateSyncBanner(synced) {
-  const el = document.getElementById('localNoticeText');
-  if (!el) return;
-  el.textContent = synced
-    ? 'Personal workspace synced securely to your account.'
-    : 'Could not load your synced workspace — showing signals without your saved decisions. Try reloading.';
+  const badge = document.getElementById('connBadge');
+  if (!badge) return;
+  badge.hidden = !!synced;
+  if (!synced) {
+    const textEl = document.getElementById('connBadgeText');
+    if (textEl) textEl.textContent = 'Could not sync your workspace — showing signals without your saved decisions';
+  }
 }
 
 /* Drives the "saved" indicator inside the signal detail dialog
@@ -730,32 +736,32 @@ function reviewState(wf) {
   return hasVal(wf.reviewedAt) ? 'Reviewed' : 'Unreviewed';
 }
 
-/* Marks a signal Reviewed because its detail was opened. A no-op past
-   the first call (idempotent, no duplicate history spam on repeat
-   opens). Saving any operator action (quick action or form Save) also
-   marks Reviewed, as a byproduct inside saveWorkflow() below — this is
-   the second of the two "opened OR acted on" triggers. */
+/* V8 review semantics (docs/watchdog-v8-review-mirror.md's Part 1 fix):
+   opening a signal's detail view is a VIEW only — see viewSignal() in
+   reviewSemantics.js, called from openDetail() — and never reaches this
+   function. This function backs the explicit "Mark Reviewed" control
+   shown only while a signal is still unreviewed. A no-op past the first
+   call (idempotent, no duplicate history spam on repeat clicks). Saving
+   any substantive operator action (form Save) also marks Reviewed, as a
+   byproduct inside saveWorkflow() below — the second of the two
+   "explicitly marked OR acted on" triggers; opening alone is neither. */
 function markReviewed(s) {
   const prev = getWorkflow(s);
   if (hasVal(prev.reviewedAt)) return prev;
   const now = new Date().toISOString();
-  const next = { ...prev, reviewedAt: now, history: [...prev.history, { at: now, summary: 'Review State: Unreviewed → Reviewed (opened)' }].slice(-WORKFLOW_HISTORY_CAP) };
-  next.createdAt = prev.createdAt || now;
-  next.updatedAt = now;
+  const next = window.WatchdogReviewSemantics.applyMarkReviewed(prev, now, WORKFLOW_HISTORY_CAP);
   const key = signalIdentity(s);
-  workflowStore.records[key] = next; // optimistic — openDetail() renders from this immediately, synchronously
+  workflowStore.records[key] = next; // optimistic — the caller re-renders from this immediately, synchronously
 
   if (!currentUserId) {
     persistWorkflowStore();
     return next;
   }
 
-  // Fire-and-forget: this is an automatic background bookkeeping write
-  // (opening a signal marks it Reviewed as a byproduct, not an explicit
-  // user Save), so it does not block the detail dialog from opening and
-  // does not show the Saving/Saved/Error indicator saveWorkflow() below
-  // uses for explicit saves. A failure here is logged and simply retried
-  // by whatever explicit save happens next.
+  // Fire-and-forget: kept lightweight (no Saving/Saved/Error indicator,
+  // unlike saveWorkflow() below) since Mark Reviewed is a single-field
+  // bookkeeping action, not a form save. A failure here is logged and
+  // simply retried by whatever explicit save happens next.
   const repId = s.id ?? null;
   window.WatchdogRepository.saveSignalUserState(currentUserId, key, repId, next)
     .then(() => saveUserScopedOverflow(currentUserId, key, next))
@@ -806,11 +812,13 @@ async function saveWorkflow(s, patch) {
   const prev = getWorkflow(s);
   const now = new Date().toISOString();
   const next = { ...prev, ...patch };
-  // Saving any operator action counts as review, same as opening detail does
-  // (see markReviewed). Deliberately not included in WORKFLOW_FIELD_LABELS /
-  // the diff summary below — it would otherwise add a noisy "Reviewed: — → …"
-  // line to every single history entry, including the very first save.
-  if (!hasVal(next.reviewedAt)) next.reviewedAt = now;
+  // Saving a substantive workflow decision counts as review too (V8 Part 1)
+  // — opening the signal alone no longer does (see viewSignal() in
+  // reviewSemantics.js, used by openDetail()). Deliberately not included in
+  // WORKFLOW_FIELD_LABELS / the diff summary below — it would otherwise add
+  // a noisy "Reviewed: — → …" line to every single history entry, including
+  // the very first save.
+  next.reviewedAt = window.WatchdogReviewSemantics.applyReviewedOnSubstantiveSave(prev, now).reviewedAt;
   // Closed/Dismissed timestamps: derived, not operator-selectable, and (like
   // reviewedAt) deliberately excluded from WORKFLOW_FIELD_LABELS so they
   // don't double up with the "Status: … → Closed" history line.
@@ -847,55 +855,12 @@ async function saveWorkflow(s, patch) {
   }
 }
 
-/* ── Card-level quick actions: which are offered depends on current
-   status, so an already-Monitoring card never offers "Monitoring"
-   again, etc. Closed/Dismissed offer none — reopening happens from
-   the detail view only, deliberately (Closed especially, to prevent
-   accidental closure per the product spec). ─────────────────────── */
-/* V6.1 card simplification (product-clarity §6): the only card-level
-   actions are Review (opening the card already marks it Reviewed — see
-   openDetail — so an explicit "Review" button just makes that affordance
-   discoverable rather than doing anything different), Monitor (one-click
-   status change), and Create Matter (opens the matter picker directly,
-   without a detour through the full detail view first). Action Required,
-   Dismiss, and Closed remain fully reachable — via the Workflow Status
-   control inside the Signal Intelligence Workspace (Overview tab) — they
-   are simply no longer card-level quick actions, so the card never shows
-   more than two buttons at once. */
-function cardQuickActions(s, wf) {
-  const done = COMPLETED_STATUSES.includes(wf.status);
-  if (done) return [];
-  const actions = [];
-  if (!hasVal(wf.reviewedAt)) actions.push('Review');
-  else if (wf.status !== 'Monitoring') actions.push('Monitor');
-  actions.push('Create Matter');
-  return actions;
-}
-
-function actionButtonClass(action) {
-  if (action === 'Review') return 'qa-btn qa-primary qa-set-monitoring';
-  if (action === 'Monitor') return 'qa-btn qa-primary qa-set-monitoring';
-  return 'qa-btn';
-}
-
-async function applyQuickAction(id, action) {
-  const s = displaySignals.find(x => String(x.id) === String(id));
-  if (!s) return;
-  if (action === 'Dismiss') { openDismissDialog(s); return; }
-  if (action === 'Review') { openDetail(id); return; }
-  if (action === 'Create Matter') { openMatterPicker(s); return; }
-  const status = action === 'Monitor' ? 'Monitoring' : action;
-  showToast('Saving…');
-  try {
-    await saveWorkflow(s, { status });
-  } catch {
-    showToast('Could not save — check your connection and try again.');
-    return;
-  }
-  showToast(`Marked ${status}.`);
-  refreshOverviewPanels();
-  renderMain();
-}
+/* V8 card simplification (see docs/watchdog-v8-component-inventory.md):
+   the entire card opens the signal — there is no card-level quick-action
+   button of any kind anymore. Review and Create Matter both used to live
+   here; both now live only inside the Signal Intelligence Workspace
+   (Action tab), reached by opening the signal, so a card is never a
+   mixed click target of "open" vs. "act." */
 
 function openDismissDialog(s) {
   pendingDismissSignal = s;
@@ -1257,17 +1222,28 @@ function attentionSortCompare(a, b) {
   return new Date(b.detected_at || 0) - new Date(a.detected_at || 0);
 }
 
-/* ══ Review Progress ═════════════════════════════════════════════ */
+/* ══ V8 Part 10 — Review metrics, semantically corrected ═════════════
+   The Review Progress WALL is gone from Today (removed from app.html) —
+   but the underlying computation is still used for the compact "Needs
+   Review" count inside Intelligence, so it's corrected here rather than
+   deleted:
+   - "Reviewed" means reviewedAt is present. Unchanged, already correct.
+   - "Reviewed Today" means reviewedAt occurred TODAY — no longer also
+     true whenever updatedAt merely changed today (the V7.1 bug: editing
+     an Operator Note today used to count as "reviewed today" even for a
+     signal reviewed weeks ago).
+   - Closed Signals and Resolved Matters are two distinct counts, never
+     combined into one ambiguous "Completed Today" total — each is
+     labeled by exactly what it counts. ═══════════════════════════════ */
 function computeReviewProgress() {
   const today = centralDateStr(new Date());
-  let reviewed = 0, reviewedToday = 0, completedToday = 0;
+  let reviewed = 0, reviewedToday = 0, closedToday = 0, dismissedToday = 0;
   for (const s of displaySignals) {
     const wf = getWorkflow(s);
     if (hasVal(wf.reviewedAt)) reviewed++;
-    const touchedToday = (hasVal(wf.reviewedAt) && centralDateStr(new Date(wf.reviewedAt)) === today) ||
-      (hasVal(wf.updatedAt) && centralDateStr(new Date(wf.updatedAt)) === today);
-    if (touchedToday) reviewedToday++;
-    if (COMPLETED_STATUSES.includes(wf.status) && hasVal(wf.updatedAt) && centralDateStr(new Date(wf.updatedAt)) === today) completedToday++;
+    if (hasVal(wf.reviewedAt) && centralDateStr(new Date(wf.reviewedAt)) === today) reviewedToday++;
+    if (wf.status === 'Closed' && hasVal(wf.closedAt) && centralDateStr(new Date(wf.closedAt)) === today) closedToday++;
+    if (wf.status === 'Dismissed' && hasVal(wf.dismissedAt) && centralDateStr(new Date(wf.dismissedAt)) === today) dismissedToday++;
   }
   let mattersUpdatedToday = 0, mattersResolvedToday = 0;
   for (const m of allMatters()) {
@@ -1277,7 +1253,7 @@ function computeReviewProgress() {
   }
   return {
     reviewed, remaining: displaySignals.length - reviewed, total: displaySignals.length,
-    reviewedToday, completedToday: completedToday + mattersResolvedToday, mattersUpdatedToday,
+    reviewedToday, closedToday, dismissedToday, mattersUpdatedToday, mattersResolvedToday,
   };
 }
 
@@ -1477,28 +1453,20 @@ function setWfToolMsg(msg, isError) {
    one click away (Signals/Completed sub-nav + feedCount, or Review
    Progress), so no computation was lost, only a redundant display. ── */
 function refreshOverviewPanels() {
-  updateReviewProgress();
+  updateNeedsReviewCount();
   updateTodaysActivity();
 }
 
-function setRpMetric(id, value) {
-  document.getElementById(id).textContent = value;
-  // Subdued styling for zero-value metrics (V3.2 §8) — a zero shouldn't
-  // visually compete with metrics that actually have something to report.
-  const tile = document.getElementById(id).closest('.rp-metric');
-  if (tile) tile.classList.toggle('rp-metric-zero', value === 0);
-}
-
-function updateReviewProgress() {
+// V8 Part 10: replaces the removed Review Progress wall. One compact,
+// precisely labeled count — "Needs Review" — inside the Intelligence
+// view only (see app.html's #intelligenceNeedsReviewCount). No progress
+// bar, no per-metric tile grid; computeReviewProgress()'s corrected
+// numbers remain available for anything that needs them later.
+function updateNeedsReviewCount() {
+  const el = document.getElementById('intelligenceNeedsReviewCount');
+  if (!el) return;
   const p = computeReviewProgress();
-  setRpMetric('rpReviewed', p.reviewed);
-  setRpMetric('rpRemaining', p.remaining);
-  setRpMetric('rpReviewedToday', p.reviewedToday);
-  setRpMetric('rpCompletedToday', p.completedToday);
-  setRpMetric('rpMattersToday', p.mattersUpdatedToday);
-  const pct = p.total ? Math.round((p.reviewed / p.total) * 100) : 0;
-  document.getElementById('rpBarFill').style.width = pct + '%';
-  document.getElementById('rpBarLabel').textContent = `${p.reviewed} / ${p.total} signals reviewed (${pct}%)`;
+  el.textContent = `${p.remaining} need${p.remaining === 1 ? 's' : ''} review`;
 }
 
 /* Shown only through the Workspace menu (V3.1): a 3-item preview plus a
@@ -1848,24 +1816,6 @@ function wireControls() {
     renderMain();
   });
 
-  /* Review Progress: clickable metrics, where practical */
-  document.getElementById('reviewProgress').addEventListener('click', (e) => {
-    const btn = e.target.closest('[data-rp-goto]');
-    if (!btn) return;
-    const dest = btn.dataset.rpGoto;
-    if (dest === 'unreviewed') {
-      activeFilters.primaryView = 'signals'; activeFilters.signalsSubTab = 'queue'; activeFilters.reviewStateFilter = 'Unreviewed';
-    } else if (dest === 'reviewed') {
-      activeFilters.primaryView = 'signals'; activeFilters.signalsSubTab = 'queue'; activeFilters.reviewStateFilter = 'Reviewed';
-    } else if (dest === 'completed') {
-      activeFilters.primaryView = 'matters'; activeFilters.mattersArchive = 'archive'; activeFilters.completedSubTab = 'closed';
-    } else if (dest === 'matters') {
-      activeFilters.primaryView = 'matters'; activeFilters.mattersArchive = 'active';
-    }
-    document.getElementById('reviewStateSel').value = activeFilters.reviewStateFilter;
-    renderMain();
-  });
-
   /* Signal filters */
   document.getElementById('priorityTabs').addEventListener('click', (e) => {
     const btn = e.target.closest('.tab');
@@ -1917,12 +1867,9 @@ function wireControls() {
     if (e.target.id === 'activityDialog') document.getElementById('activityDialog').close();
   });
   document.getElementById('exportBtn').addEventListener('click', exportWorkspace);
-  document.getElementById('importBtn').addEventListener('click', () => document.getElementById('importFile').click());
-  document.getElementById('importFile').addEventListener('change', (e) => {
-    const file = e.target.files && e.target.files[0];
-    if (file) importWorkspaceFile(file);
-    e.target.value = '';
-  });
+  // V8 Part 3: Import Workspace's controls are gone from app.html — it
+  // never worked once signed in (see importWorkspaceFile() above, kept
+  // in case anonymous/local mode returns; nothing left to wire here).
   document.getElementById('resetWorkspaceBtn').addEventListener('click', resetWorkspace);
 
   /* Attention summary (Signals screen only) — clicking a pill jumps into
@@ -1968,6 +1915,15 @@ function wireControls() {
     if (!btn || !currentDetailSignal) return;
     const action = btn.dataset.detailAction;
     if (action === 'Create Matter') { openMatterPicker(currentDetailSignal); return; }
+    if (action === 'Mark Reviewed') {
+      const wf = markReviewed(currentDetailSignal);
+      refreshOverviewPanels();
+      renderMain();
+      renderDetailPrimaryActions(currentDetailSignal, wf);
+      populateWorkflowForm(wf);
+      showToast('Marked Reviewed.');
+      return;
+    }
     if (action === 'Monitor') {
       showToast('Saving…');
       try { await saveWorkflow(currentDetailSignal, { status: 'Monitoring' }); }
@@ -2135,29 +2091,27 @@ function wireControls() {
     }
   });
 
-  /* Feed: open-detail buttons and card-level quick-action buttons are both
-     re-created on every render, so listeners are delegated on the static
-     container instead of per-card. */
+  /* Feed: cards are re-created on every render, so the open-detail
+     listener is delegated on the static container instead of per-card.
+     Every signal card is a single click target — the whole card opens
+     the signal (see renderCard); there is no separate quick-action
+     button to distinguish here anymore. */
   document.getElementById('sigList').addEventListener('click', (e) => {
     const openBtn = e.target.closest('.sig-open');
-    if (openBtn) { openDetail(openBtn.dataset.id); return; }
-    const qaBtn = e.target.closest('.qa-btn');
-    if (qaBtn) { applyQuickAction(qaBtn.dataset.id, qaBtn.dataset.action); }
+    if (openBtn) { openDetail(openBtn.dataset.id); }
   });
 
   /* Active Matters list — also hosts the Archive's closed/dismissed-
      signals sub-case (renderArchivedSignalsIntoMattersList renders plain
      signal cards into this same list), so this delegation handles both
      .sig-open shapes (matter cards carry data-matter-id; signal cards
-     carry data-id) and quick-action buttons on signal cards. */
+     carry data-id). */
   document.getElementById('mattersList').addEventListener('click', (e) => {
     const openBtn = e.target.closest('.sig-open');
     if (openBtn) {
       if (openBtn.dataset.matterId) { openMatterDetail(openBtn.dataset.matterId); return; }
       if (openBtn.dataset.id) { openDetail(openBtn.dataset.id); return; }
     }
-    const qaBtn = e.target.closest('.qa-btn');
-    if (qaBtn && qaBtn.dataset.id) { applyQuickAction(qaBtn.dataset.id, qaBtn.dataset.action); }
   });
   document.getElementById('newMatterBtn').addEventListener('click', openManualMatterCreate);
 
@@ -2282,19 +2236,26 @@ function fillSelect(id, values, allLabel, labelFn) {
 }
 
 /* ── Stats (reflect the deduplicated, focus-county-scoped set) ────── */
+// V8 Part 5 (docs/watchdog-v8-component-inventory.md's six-way counting
+// distinction): the six-tile territory wall this used to feed is gone
+// from Today entirely — a "Jurisdictions" or "Sources" count of the
+// *current signal set* reads as a fact about the whole monitored
+// territory, which it never was. That computation is deleted outright,
+// not merely hidden, so it can't quietly resurface under the same
+// misleading bare label later. High/Medium/Monitor counts and the
+// canonical signal count remain computed (still meaningful, still
+// clearly scoped to "right now"), written only if a target element
+// exists — same defensive pattern as updateTimestamps() above — so nothing
+// throws if no view currently displays them.
 function updateStats() {
   const high = displaySignals.filter(s => s._c.priority === 'High').length;
   const med  = displaySignals.filter(s => s._c.priority === 'Medium').length;
   const mon  = displaySignals.filter(s => s._c.priority === 'Monitor').length;
-  const jurisdictions = new Set(displaySignals.map(s => s._c.jurisdiction).filter(hasVal)).size;
-  const sources = new Set(displaySignals.map(s => s._c.source).filter(hasVal)).size;
 
-  document.getElementById('cHigh').textContent = high;
-  document.getElementById('cMed').textContent = med;
-  document.getElementById('cMon').textContent = mon;
-  document.getElementById('cJuris').textContent = jurisdictions;
-  document.getElementById('cSources').textContent = sources;
-  document.getElementById('cTerritory').textContent = displaySignals.length;
+  const cHigh = document.getElementById('cHigh'); if (cHigh) cHigh.textContent = high;
+  const cMed = document.getElementById('cMed'); if (cMed) cMed.textContent = med;
+  const cMon = document.getElementById('cMon'); if (cMon) cMon.textContent = mon;
+  const cTerritory = document.getElementById('cTerritory'); if (cTerritory) cTerritory.textContent = displaySignals.length;
 }
 
 /* ══ Main render dispatcher ══════════════════════════════════════
@@ -2427,14 +2388,15 @@ function updateNavUI() {
   document.getElementById('mobileFiltersToggle').hidden = isNoFilterPanelView;
   if (isNoFilterPanelView) mobileFiltersOpen = false;
 
-  // Territory summary + Review Progress: Today only (product-clarity §4/§12
-  // — not repeated on every screen).
-  document.getElementById('overviewStrip').hidden = !isTodayOverview;
-  document.getElementById('reviewProgress').hidden = !isTodayOverview;
+  // V8 Part 4/10: the six-tile territory wall and the Review Progress
+  // wall are gone entirely (not merely hidden elsewhere) — see
+  // renderTodayView() and computeReviewProgress() above.
 
-  // Attention summary is shown only on the Intelligence screen.
+  // Attention summary and the compact Needs Review count are shown only
+  // on the Intelligence screen (V8 Part 10).
   if (activeFilters.primaryView === 'signals') {
     renderAttentionSummary();
+    updateNeedsReviewCount();
   } else {
     document.getElementById('attentionSummaryWrap').hidden = true;
   }
@@ -2566,27 +2528,33 @@ function todaySectionHtml(opts) {
   </div>`;
 }
 
-function todayMiniSignalRow(s) {
+// "Open", never "Review" — this button only opens the signal (see the
+// data-open-signal handler, which calls openDetail()); it does not mark
+// anything Reviewed. Labeling it "Review" was itself part of the V7.1
+// review-semantics confusion this V8 pass corrects (Part 1).
+function todayMiniSignalRow(s, reasonChips) {
   const c = s._c;
   return `<div class="matter-sig-row">
     <div>
       <p class="matter-sig-title" title="${esc(displayHeadline(c))}">${esc(displayHeadline(c))}</p>
       <div class="matter-sig-meta">
+        ${(reasonChips || []).map((r) => `<span class="chip chip-reason">${esc(r)}</span>`).join('')}
         <span class="chip">${esc(c.jurisdiction || 'Unknown jurisdiction')}</span>
         <span class="chip">Detected ${esc(detectedAgeLabel(s.detected_at))}</span>
       </div>
     </div>
     <div class="matter-sig-actions">
-      <button type="button" class="wf-tool-btn" data-open-signal="${esc(s.id)}">Review</button>
+      <button type="button" class="wf-tool-btn" data-open-signal="${esc(s.id)}">Open</button>
     </div>
   </div>`;
 }
 
-function todayMiniMatterRow(m) {
+function todayMiniMatterRow(m, reasonChips) {
   return `<div class="matter-sig-row">
     <div>
       <p class="matter-sig-title">${esc(m.title || 'Untitled matter')}</p>
       <div class="matter-sig-meta">
+        ${(reasonChips || []).map((r) => `<span class="chip chip-reason">${esc(r)}</span>`).join('')}
         <span class="chip">${esc(m.status)}</span>
         ${hasVal(m.followUpDate) ? `<span class="chip">Follow-up ${esc(dateOnly(m.followUpDate))}</span>` : ''}
       </div>
@@ -2595,6 +2563,51 @@ function todayMiniMatterRow(m) {
       <button type="button" class="wf-tool-btn" data-open-matter="${esc(m.id)}">Open</button>
     </div>
   </div>`;
+}
+
+/* ══ V8 Part 4 — Today's "Requires Action" section ═══════════════════
+   Merges four overlapping conditions (signal overdue/due-today/Action
+   Required, matter overdue/due-today/Action Required) into ONE
+   deduplicated, urgency-sorted list — a record matching more than one
+   condition appears exactly once, with every matching reason shown as a
+   compact chip, instead of once per condition the way the old Today
+   sections did (a signal that was both overdue AND Action Required used
+   to appear in two separate section lists). ══════════════════════════ */
+const REQUIRES_ACTION_REASON_LABELS = {
+  overdue: 'Overdue follow-up', dueToday: 'Due today', actionRequired: 'Action Required',
+  matterOverdue: 'Overdue follow-up', matterDueToday: 'Due today', matterActionRequired: 'Action Required',
+};
+function requiresActionUrgencyRank(reasons) {
+  if (reasons.includes('overdue') || reasons.includes('matterOverdue')) return 0;
+  if (reasons.includes('dueToday') || reasons.includes('matterDueToday')) return 1;
+  return 2; // Action Required only
+}
+function computeRequiresActionItems() {
+  const byKey = new Map();
+  function addReason(kind, key, item, reasonKey) {
+    const mapKey = kind + ':' + key;
+    if (!byKey.has(mapKey)) byKey.set(mapKey, { kind, item, reasons: [] });
+    byKey.get(mapKey).reasons.push(reasonKey);
+  }
+  for (const s of displaySignals) {
+    const wf = getWorkflow(s);
+    const key = signalIdentity(s);
+    if (isOverdueFollowUp(wf)) addReason('signal', key, s, 'overdue');
+    if (isDueTodayFollowUp(wf)) addReason('signal', key, s, 'dueToday');
+    if (wf.status === 'Action Required') addReason('signal', key, s, 'actionRequired');
+  }
+  for (const m of activeMatters()) {
+    if (isMatterOverdue(m)) addReason('matter', m.id, m, 'matterOverdue');
+    if (isMatterDueToday(m)) addReason('matter', m.id, m, 'matterDueToday');
+    if (m.status === 'Action Required') addReason('matter', m.id, m, 'matterActionRequired');
+  }
+  return [...byKey.values()].sort((a, b) => requiresActionUrgencyRank(a.reasons) - requiresActionUrgencyRank(b.reasons));
+}
+function requiresActionRowHtml(entry) {
+  // Unique reason labels only — "Overdue follow-up" should not be listed
+  // twice if a record somehow matched both overdue keys.
+  const labels = [...new Set(entry.reasons.map((r) => REQUIRES_ACTION_REASON_LABELS[r]))];
+  return entry.kind === 'signal' ? todayMiniSignalRow(entry.item, labels) : todayMiniMatterRow(entry.item, labels);
 }
 
 async function todayOperationalWarningHtml() {
@@ -2620,31 +2633,37 @@ async function todayOperationalWarningHtml() {
   </div>`;
 }
 
+/* V8 Part 4 — Today opens directly into the work: exactly three
+   ordered sections, each answering one decision a GAD actually needs
+   Today to answer. Nothing here exists that doesn't support one of
+   those three decisions — the six-tile territory wall and the Review
+   Progress wall are both gone from this view entirely (removed from
+   app.html; see docs/watchdog-v8-component-inventory.md for why they
+   were administrative noise, not decisions). */
 async function renderTodayView() {
   const el = document.getElementById('todayContent');
   el.innerHTML = `<div class="state loading"><div class="spinner" aria-hidden="true"></div><p>Loading Today…</p></div>`;
 
-  const counts = computeAttentionCounts();
-  const sharedCounts = computeSharedAttentionCounts();
+  // 1. REQUIRES ACTION — deduplicated, urgency-sorted; a record matching
+  // more than one condition (e.g. both overdue AND Action Required)
+  // appears exactly once, with every matching reason as a compact chip.
+  const requiresAction = computeRequiresActionItems();
 
-  const unreviewed = displaySignals.filter((s) => !hasVal(getWorkflow(s).reviewedAt));
-  const newHigh = unreviewed.filter((s) => s._c.priority === 'High');
-  const newMedium = unreviewed.filter((s) => s._c.priority === 'Medium');
-  const newOther = unreviewed.filter((s) => !['High', 'Medium'].includes(s._c.priority));
+  // 2. NEW INTELLIGENCE — highest-value unreviewed High/Medium signals
+  // only; never Monitor-priority items, and never more than 5 at a time.
+  const newIntelligence = displaySignals
+    .filter((s) => !window.WatchdogReviewSemantics.isReviewed(getWorkflow(s)) && ['High', 'Medium'].includes(s._c.priority))
+    .sort((a, b) => {
+      const rank = { High: 0, Medium: 1 };
+      const r = (rank[a._c.priority] ?? 2) - (rank[b._c.priority] ?? 2);
+      return r !== 0 ? r : new Date(b.detected_at || 0) - new Date(a.detected_at || 0);
+    });
 
-  const matterActionRequired = attentionQueueMatters('matterActionRequired');
-
-  const overdueSignals = attentionQueueSignals('overdue');
-  const dueTodaySignals = attentionQueueSignals('dueToday');
-  const overdueMatters = attentionQueueMatters('matterOverdue');
-  const dueTodayMatters = attentionQueueMatters('matterDueToday');
-  const followUpCount = overdueSignals.length + dueTodaySignals.length + overdueMatters.length + dueTodayMatters.length;
-
-  // Review fix: "Recent Material Changes" must reflect current work, not
-  // history — activeMatters() (status !== 'Resolved') excludes archived/
-  // resolved/closed matters (including the existing resolved test
-  // matter) without deleting or otherwise touching those records.
-  const recentMatters = activeMatters()
+  // 3. ACTIVE MATTERS UPDATED — real materiality only: an actual field
+  // changed (updatedAt !== createdAt), not merely touched, within the
+  // last 3 days. activeMatters() (status !== 'Resolved') excludes
+  // archived/resolved matters without deleting or otherwise touching them.
+  const mattersUpdated = activeMatters()
     .filter((m) => hasVal(m.updatedAt) && (Date.now() - new Date(m.updatedAt).getTime()) < 3 * 86400000 && m.updatedAt !== m.createdAt)
     .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
 
@@ -2654,64 +2673,26 @@ async function renderTodayView() {
   const sections = [];
 
   sections.push(todaySectionHtml({
-    title: 'New High-Priority Signals', count: newHigh.length,
-    explain: 'Unreviewed signals Watchdog scored High priority.',
-    linkQueueKey: 'unreviewedHM', linkLabel: 'Review all →',
-    bodyHtml: newHigh.length ? `<div class="matter-sig-list">${newHigh.slice(0, 5).map(todayMiniSignalRow).join('')}</div>` : '',
+    title: 'Requires Action', count: requiresAction.length,
+    explain: 'Overdue and due-today follow-ups, plus signals and Active Matters marked Action Required.',
+    emptyText: 'Nothing currently requires action.',
+    bodyHtml: requiresAction.length ? `<div class="matter-sig-list">${requiresAction.map(requiresActionRowHtml).join('')}</div>` : '',
   }));
 
   sections.push(todaySectionHtml({
-    title: 'New Medium-Priority Signals', count: newMedium.length,
-    explain: 'Unreviewed signals Watchdog scored Medium priority.',
-    linkQueueKey: 'unreviewedHM', linkLabel: 'Review all →',
-    bodyHtml: newMedium.length ? `<div class="matter-sig-list">${newMedium.slice(0, 5).map(todayMiniSignalRow).join('')}</div>` : '',
+    title: 'New Intelligence', count: newIntelligence.length,
+    explain: 'The highest-value unreviewed High and Medium signals.',
+    emptyText: 'No unreviewed High or Medium signals right now.',
+    linkQueueKey: 'unreviewedHM', linkLabel: 'Go to Intelligence →',
+    bodyHtml: newIntelligence.length ? `<div class="matter-sig-list">${newIntelligence.slice(0, 5).map((s) => todayMiniSignalRow(s)).join('')}</div>` : '',
   }));
 
   sections.push(todaySectionHtml({
-    title: 'Matters Requiring Action', count: matterActionRequired.length,
-    explain: 'Active Matters explicitly marked Action Required.',
-    linkQueueKey: 'matterActionRequired', linkLabel: 'View all →',
-    bodyHtml: matterActionRequired.length ? `<div class="matter-sig-list">${matterActionRequired.slice(0, 5).map(todayMiniMatterRow).join('')}</div>` : '',
+    title: 'Active Matters Updated', count: mattersUpdated.length,
+    explain: 'Active Matters with a real, recorded change in the last 3 days.',
+    emptyText: 'No Active Matters have changed in the last 3 days.',
+    bodyHtml: mattersUpdated.length ? `<div class="matter-sig-list">${mattersUpdated.slice(0, 5).map((m) => todayMiniMatterRow(m)).join('')}</div>` : '',
   }));
-
-  sections.push(todaySectionHtml({
-    title: 'Follow-Ups Due or Overdue', count: followUpCount,
-    explain: 'Signals and Active Matters with a follow-up date that has arrived or passed.',
-    emptyText: 'No follow-ups are due or overdue.',
-    bodyHtml: followUpCount ? `<div class="matter-sig-list">
-      ${overdueSignals.slice(0, 3).map(todayMiniSignalRow).join('')}
-      ${dueTodaySignals.slice(0, 3).map(todayMiniSignalRow).join('')}
-      ${overdueMatters.slice(0, 3).map(todayMiniMatterRow).join('')}
-      ${dueTodayMatters.slice(0, 3).map(todayMiniMatterRow).join('')}
-    </div>` : '',
-  }));
-
-  sections.push(todaySectionHtml({
-    title: 'Items Awaiting Review', count: newOther.length,
-    explain: 'Unreviewed signals not already called out above (Monitor priority).',
-    linkQueueKey: '', bodyHtml: '',
-  }));
-
-  sections.push(todaySectionHtml({
-    title: 'Recent Material Changes', count: recentMatters.length,
-    explain: 'Active Matters updated in the last 3 days.',
-    emptyText: 'No Active Matters have been updated in the last 3 days.',
-    bodyHtml: recentMatters.length ? `<div class="matter-sig-list">${recentMatters.slice(0, 5).map(todayMiniMatterRow).join('')}</div>` : '',
-  }));
-
-  const leadershipCount = sharedCounts.leadership || 0;
-  const committeeCount = sharedCounts.committee || 0;
-  if (leadershipCount || committeeCount) {
-    sections.push(todaySectionHtml({
-      title: 'Shared Awareness', count: leadershipCount + committeeCount,
-      explain: 'Leadership Awareness or Committee Attention flagged by the team.',
-      bodyHtml: `<div class="matter-sig-meta" style="margin-top:6px">
-        ${leadershipCount ? `<button type="button" class="today-section-link" data-queue="leadership">Leadership Awareness (${leadershipCount}) →</button>` : ''}
-        ${committeeCount ? `<button type="button" class="today-section-link" data-queue="committee">Committee Attention (${committeeCount}) →</button>` : ''}
-      </div>`,
-      alwaysShow: true,
-    }));
-  }
 
   el.innerHTML = `${warningHtml}${sections.join('')}`;
 }
@@ -2872,45 +2853,32 @@ function displayHeadline(c) {
   return c.cleanTitle;
 }
 
+/* V8 Part 6 signal-card simplification: shows only what's needed to
+   decide whether to open the signal — priority, Unreviewed / a
+   meaningful workflow status, jurisdiction, detected age, headline,
+   source. Category, confidence, verification, county, and provenance
+   all remain available one click away in the Issue Brief (openDetail)
+   — a card is a triage surface, not a second copy of the record. The
+   entire card is one click target; there is no card-level action
+   button of any kind. */
 function renderCard(s) {
   const c = s._c;
   const priClass = ['High', 'Medium', 'Monitor'].includes(c.priority) ? c.priority : 'Monitor';
   const wf = getWorkflow(s);
-  const unreviewed = !hasVal(wf.status) && reviewState(wf) === 'Unreviewed';
+  const unreviewed = !window.WatchdogReviewSemantics.isReviewed(wf);
 
-  // ── Top line: combined priority badge, Unreviewed badge (only while
-  // still unreviewed — never a redundant "Reviewed" badge afterward),
-  // jurisdiction, county (only when it adds information beyond
-  // jurisdiction), Detected age right-aligned. ──────────────────────
+  // ── Top line: combined priority badge, then exactly one review/status
+  // badge — Unreviewed while still unreviewed, or the workflow status
+  // only when it's itself meaningful (Action Required demands attention;
+  // Monitoring/blank say nothing a reviewed card needs repeated), then
+  // jurisdiction, Detected age right-aligned. ────────────────────────
   const topBadges = [];
   const priorityLabel = combinedPriorityLabel(s, c);
   if (hasVal(priorityLabel)) topBadges.push(`<span class="badge b-${priClass}">${esc(priorityLabel)}</span>`);
   if (unreviewed) topBadges.push(`<span class="chip chip-unreviewed">Unreviewed</span>`);
-
-  // "Not repetitive": some jurisdictions are themselves county-level bodies
-  // (e.g. "Hunt County Commissioners Court"), where a separate "Hunt
-  // County" badge would just repeat what the jurisdiction already says.
-  const showCounty = hasVal(c.county) && !(c.jurisdiction || '').toLowerCase().includes(c.county.toLowerCase());
-
-  // ── Compact metadata row: Issue Category, Confidence, source
-  // provenance (Verified/Member-sourced — both shown only when both
-  // genuinely exist; the scanner's own "Review Status" (new/reviewed/
-  // dismissed/promoted) is deliberately excluded — it conflicts with
-  // the local Reviewed/Unreviewed system and was never meant to be
-  // read alongside it). No entry is ever rendered for a missing value. ──
-  const metaChips = [];
-  if (hasVal(c.category)) metaChips.push(`<span class="chip">${esc(c.category)}</span>`);
-  if (hasVal(c.confidenceLevel)) metaChips.push(`<span class="chip">Confidence: ${esc(c.confidenceLevel)}</span>`);
-  if (s.is_verified_public_source) metaChips.push(`<span class="chip chip-good">✓ Verified source</span>`);
-  if (s.is_member_signal) metaChips.push(`<span class="chip chip-violet">Member-sourced</span>`);
+  else if (wf.status === 'Action Required') topBadges.push(`<span class="chip chip-action-required">Action Required</span>`);
 
   const cardClass = `sig p-${priClass}${wf.status === 'Action Required' ? ' wf-action-required' : ''}`;
-  const actions = cardQuickActions(s, wf);
-  const actionsHtml = actions.length
-    ? `<div class="sig-actions-row">${actions.map(a =>
-        `<button type="button" class="${actionButtonClass(a)}" data-action="${esc(a)}" data-id="${esc(s.id)}">${esc(a)}</button>`
-      ).join('')}</div>`
-    : '';
 
   return `
   <div class="${cardClass}">
@@ -2918,14 +2886,11 @@ function renderCard(s) {
       <div class="sig-top">
         ${topBadges.join('')}
         <span class="sig-juris">${esc(c.jurisdiction || 'Unknown jurisdiction')}</span>
-        ${showCounty ? `<span class="sig-county">${esc(c.county)} County</span>` : ''}
         <span class="sig-date" title="${esc(absoluteDate(s.detected_at))}">Detected ${esc(detectedAgeLabel(s.detected_at))}</span>
       </div>
       <p class="sig-title" title="${esc(displayHeadline(c))}">${esc(displayHeadline(c))}</p>
       ${hasVal(c.source) ? `<p class="sig-source">${esc(c.source)}</p>` : ''}
-      ${metaChips.length ? `<div class="sig-meta-row">${metaChips.join('')}</div>` : ''}
     </button>
-    ${actionsHtml}
   </div>`;
 }
 
@@ -3178,7 +3143,14 @@ async function renderSourceOrganizationsView() {
     return true;
   });
 
-  document.getElementById('sourceCoverageCount').textContent = `${filtered.length} source${filtered.length === 1 ? '' : 's'}`;
+  // V8 Part 5: this is the monitored-organizations registry, precisely
+  // distinguished from "active" — never a bare count that could be
+  // mistaken for signals currently in the feed (that count lives on the
+  // Intelligence view, not here; see docs/watchdog-v8-component-inventory.md).
+  const activeInFilteredSet = filtered.filter((r) => r.is_active).length;
+  document.getElementById('sourceCoverageCount').textContent = f.scActive
+    ? `${filtered.length} ${f.scActive === 'true' ? 'active' : 'inactive'} organization${filtered.length === 1 ? '' : 's'} (of ${sourceRegistryRows.length} monitored)`
+    : `${filtered.length} monitored organization${filtered.length === 1 ? '' : 's'} (${activeInFilteredSet} active)`;
 
   if (!filtered.length) {
     listEl.innerHTML = `<div class="state no-results"><p>${esc(
@@ -4113,8 +4085,14 @@ function switchDetailTab(key) {
 function renderDetailPrimaryActions(s, wf) {
   const el = document.getElementById('detailPrimaryActions');
   const buttons = [];
+  // V8 Part 1/9: the only place "Mark Reviewed" appears — never on the
+  // card, never automatic on open. Shown only while genuinely unreviewed;
+  // gone the moment it's set, with no redundant "Reviewed" button left behind.
+  if (!window.WatchdogReviewSemantics.isReviewed(wf)) {
+    buttons.push(`<button type="button" class="qa-btn qa-primary qa-set-monitoring" data-detail-action="Mark Reviewed">Mark Reviewed</button>`);
+  }
   if (!COMPLETED_STATUSES.includes(wf.status) && wf.status !== 'Monitoring') {
-    buttons.push(`<button type="button" class="qa-btn qa-primary qa-set-monitoring" data-detail-action="Monitor">Monitor</button>`);
+    buttons.push(`<button type="button" class="qa-btn" data-detail-action="Monitor">Monitor</button>`);
   }
   if (!COMPLETED_STATUSES.includes(wf.status)) {
     buttons.push(`<button type="button" class="qa-btn" data-detail-action="Create Matter">Create Matter</button>`);
@@ -4231,20 +4209,8 @@ function buildRecordedResponseHtml(s, wf) {
 function renderDetailResponse(s, wf) {
   document.getElementById('detailResponse').innerHTML = `
     ${buildRecordedResponseHtml(s, wf)}
-    <div class="intel-empty">
-      <p class="intel-empty-title">No generated recommendation is available yet.</p>
-      <p class="intel-empty-body">A future release may recommend:</p>
-      <ul class="intel-empty-list">
-        <li>Continue monitoring</li>
-        <li>Contact staff</li>
-        <li>Brief leadership</li>
-        <li>Alert committee</li>
-        <li>Engage a Local Contact</li>
-        <li>Submit comments</li>
-        <li>Prepare testimony</li>
-        <li>Create an advocacy work product</li>
-      </ul>
-    </div>
+    <p class="wf-section-heading">Recommended Next Step</p>
+    <p class="state-detail">No analysis has been saved for this signal yet, so no recommendation is available — see Intelligence Tools on the Analysis tab.</p>
   `;
 }
 
@@ -4312,13 +4278,25 @@ function renderEditHistory(analysis) {
     <ul class="intel-empty-list">${rows}</ul>`;
 }
 
+/* V8 Part 7 — every field below is read through Dashboard/analysisRendering.js
+   (window.WatchdogAnalysisRendering), which is what actually fixes the
+   documented V7.1 rendering defects; this function only decides layout.
+   None of this mutates the analysis object or writes anything — the
+   preserved baseline row (signal_intelligence_analyses.id
+   e3ec122a-f750-4a7d-ad5f-f558898eb24c) is only ever read here. */
 function renderAnalysisTabContent(analysis) {
   const el = document.getElementById('detailAnalysisContent');
   if (!analysis) { el.innerHTML = ANALYSIS_EMPTY_STATE_HTML; return; }
 
-  const facts = (list) => (Array.isArray(list) && list.length)
-    ? `<ul class="intel-empty-list">${list.map((f) => `<li>${esc(typeof f === 'string' ? f : (f.text || f.question || ''))}</li>`).join('')}</ul>`
-    : `<p class="state-detail">None recorded.</p>`;
+  const AR = window.WatchdogAnalysisRendering;
+
+  const factListHtml = (entries, emptyMsg) => entries.length
+    ? `<ul class="intel-empty-list">${entries.map((e) => {
+        const statement = typeof e === 'string' ? e : e.statement;
+        const idsTag = (e.evidenceIds && e.evidenceIds.length) ? ` <span class="evidence-id-tag">(${e.evidenceIds.map(esc).join(', ')})</span>` : '';
+        return `<li>${esc(statement)}${idsTag}</li>`;
+      }).join('')}</ul>`
+    : `<p class="state-detail">${esc(emptyMsg)}</p>`;
 
   // Edit-before-review (V7.1 §10): Collaborators/Administrators may correct
   // a Draft or Human Reviewed analysis's narrative content before formal
@@ -4327,39 +4305,83 @@ function renderAnalysisTabContent(analysis) {
   // never editable (the SQL function itself also refuses those).
   const canEditDraft = canEditShared() && ['Draft', 'Human Reviewed'].includes(analysis.status);
 
+  const nextStep = AR.recommendedNextStep(analysis);
+  const pathway = AR.positionPathwayDisplay(analysis);
+  const gov = AR.governanceInfo(analysis);
+  const gaps = AR.evidenceGapEntries(analysis);
+  const consequences = AR.practicalConsequenceEntries(analysis);
+  const whyEntries = AR.whyThisMattersEntries(analysis);
+
   el.innerHTML = `
     ${aiDraftLabel(analysis)}
     <span class="${intelStatusBadgeClass(analysis.status)}">${esc(analysis.status)}</span>
     ${canEditDraft ? `<button type="button" class="wf-tool-btn" id="analysisEditToggleBtn" style="margin-left:8px">Edit Draft</button>` : ''}
     <div id="analysisEditWrap"></div>
-    ${hasVal(analysis.executive_summary) ? `<p class="sig-snip" style="margin-top:10px">${esc(analysis.executive_summary)}</p>` : ''}
-    <dl class="analysis-areas">
-      <div class="analysis-area"><dt>Why It Matters</dt><dd>${esc(analysis.why_it_matters || 'Not addressed')}</dd></div>
-      <div class="analysis-area"><dt>Organizational Relevance</dt><dd>${esc(analysis.organizational_relevance || 'Not addressed')}</dd></div>
-      <div class="analysis-area"><dt>Practical Consequences</dt><dd>${esc(analysis.practical_consequences || 'Not addressed')}</dd></div>
-      <div class="analysis-area"><dt>Geographic Significance</dt><dd>${esc(analysis.geographic_significance || 'Not addressed')}</dd></div>
+
+    <section class="analysis-recommendation" aria-label="Recommended next step">
+      <p class="wf-section-heading" style="margin-top:14px">Recommended Next Step</p>
+      <p class="${nextStep.recorded ? 'analysis-summary-full' : 'state-detail'}">${esc(nextStep.text)}</p>
+      <dl class="analysis-quick-facts">
+        ${dlRow('Proposed Intelligence Priority', esc(analysis.intelligence_priority || 'Unclear'))}
+        ${dlRow('Urgency', esc(analysis.urgency || 'Unclear'))}
+        ${dlRow('Position Status', esc(pathway.label))}
+        ${dlRow('Evidence Confidence', esc(analysis.evidence_quality || 'Unclear'))}
+      </dl>
+    </section>
+
+    ${AR.executiveSummaryText(analysis) ? `
+    <p class="wf-section-heading" style="margin-top:14px">Executive Summary</p>
+    <p class="analysis-summary-full">${esc(AR.executiveSummaryText(analysis))}</p>` : ''}
+
+    <p class="wf-section-heading" style="margin-top:14px">Why This Matters to MetroTex</p>
+    ${whyEntries.length ? `<dl class="dl-grid">${whyEntries.map((e) => dlRow(e.label, esc(e.text))).join('')}</dl>` : `<p class="state-detail">Not enough stored analysis to build this yet.</p>`}
+
+    <dl class="analysis-areas" style="margin-top:14px">
       <div class="analysis-area"><dt>Materiality</dt><dd>${esc(analysis.materiality_level || 'Unclear')} — ${esc(analysis.materiality_rationale || '')}</dd></div>
-      <div class="analysis-area"><dt>Evidence Gaps and Uncertainty</dt><dd>${esc(analysis.evidence_quality || 'Unclear')} confidence — ${esc(analysis.evidence_gaps || '')}</dd></div>
-      <div class="analysis-area"><dt>Position Pathway</dt><dd>${esc(analysis.position_pathway || 'Not addressed')}</dd></div>
       <div class="analysis-area"><dt>Priority Rationale</dt><dd>${esc(analysis.priority_rationale || 'Not addressed')}</dd></div>
     </dl>
-    <p class="wf-section-heading" style="margin-top:14px">Confirmed Facts</p>
-    ${facts(analysis.confirmed_facts)}
-    <p class="wf-section-heading">Unresolved Questions</p>
-    ${facts(analysis.unresolved_facts)}
+
+    <p class="wf-section-heading" style="margin-top:14px">Practical Consequences</p>
+    ${consequences.entries.length
+      ? (consequences.entries.length > 1 ? `<ul class="intel-empty-list">${consequences.entries.map((c) => `<li>${esc(c)}</li>`).join('')}</ul>` : `<p class="state-detail">${esc(consequences.entries[0])}</p>`)
+      : `<p class="state-detail">Not addressed.</p>`}
+
+    <p class="wf-section-heading" style="margin-top:14px">Position Pathway</p>
+    <p class="state-detail"><strong>${esc(pathway.label)}</strong>${pathway.description ? ' — ' + esc(pathway.description) : ''}</p>
     ${hasVal(analysis.potential_applicable_position_note) ? `
-    <p class="wf-section-heading">Potential Applicable Position</p>
-    <p class="state-detail">${esc(analysis.potential_applicable_position_note)} <span style="opacity:.8">(confidence: ${esc(analysis.position_confidence || 'Unclear')})</span></p>` : ''}
+    <p class="state-detail" style="margin-top:4px">${esc(analysis.potential_applicable_position_note)} <span style="opacity:.8">(confidence: ${esc(analysis.position_confidence || 'Unclear')})</span></p>` : ''}
+
+    <p class="wf-section-heading" style="margin-top:14px">Evidence Gaps</p>
+    ${gaps.entries.length
+      ? `<ul class="intel-empty-list">${gaps.entries.map((g) => `<li>${g.type === 'contradiction' ? '<strong>Contradiction:</strong> ' : ''}${esc(g.text)}</li>`).join('')}</ul>`
+      : `<p class="state-detail">None recorded.</p>`}
+
+    <p class="wf-section-heading" style="margin-top:14px">Confirmed Facts</p>
+    ${factListHtml(AR.confirmedFactEntries(analysis), 'None recorded.')}
+    <p class="wf-section-heading">Unresolved Questions</p>
+    ${factListHtml(AR.unresolvedFactEntries(analysis), 'None recorded.')}
+
     ${Array.isArray(analysis.citations) && analysis.citations.length ? `
-    <p class="wf-section-heading">Citations</p>
+    <p class="wf-section-heading" style="margin-top:14px">Citations</p>
     <dl class="dl-grid">${analysis.citations.map((c) => dlRow(c.source_id || 'Source', esc(c.quote_or_reference || ''))).join('')}</dl>` : ''}
+
+    <section class="wf-section" style="margin-top:14px" aria-label="Governance">
+      <p class="wf-section-heading">Governance</p>
+      <dl class="dl-grid">
+        ${gov.required !== null ? dlRow('Governance Required', gov.required ? 'Yes' : 'No') : ''}
+        ${hasVal(gov.recommendedRoute) ? dlRow('Recommended Route', esc(gov.recommendedRoute)) : ''}
+        ${gov.approvalNeededFrom.length ? dlRow('Approval Needed From', esc(gov.approvalNeededFrom.join(', '))) : ''}
+      </dl>
+      <p class="wf-required-hint">This is a proposal from the imported analysis, not an approved organizational decision. Nothing here is applied automatically.</p>
+    </section>
+
     ${(() => {
       const meta = analysis.usage_metadata || {};
       const inferences = Array.isArray(meta.inferences) ? meta.inferences : [];
       const warnings = Array.isArray(meta.warnings) ? meta.warnings : [];
       return `
-        ${inferences.length ? `<p class="wf-section-heading">Inferences</p>${facts(inferences.map((i) => `${i.statement || i}${i.basis ? ' — basis: ' + i.basis : ''}${i.confidence ? ` (${i.confidence} confidence)` : ''}`))}` : ''}
-        ${warnings.length ? `<p class="wf-section-heading">Warnings</p>${facts(warnings)}` : ''}
+        ${inferences.length ? `<p class="wf-section-heading" style="margin-top:14px">Inferences</p>${factListHtml(inferences.map((i) => ({ statement: `${i.statement || i}${i.basis ? ' — basis: ' + i.basis : ''}${i.confidence ? ` (${i.confidence} confidence)` : ''}`, evidenceIds: [] })), 'None recorded.')}` : ''}
+        ${warnings.length ? `<p class="wf-section-heading">Warnings</p>${factListHtml(warnings.map((w) => ({ statement: w, evidenceIds: [] })), 'None recorded.')}` : ''}
         ${hasVal(meta.analyst_note) ? `<p class="wf-section-heading">Analyst Note</p><p class="state-detail">${esc(meta.analyst_note)}</p>` : ''}
       `;
     })()}
@@ -4368,43 +4390,64 @@ function renderAnalysisTabContent(analysis) {
   `;
 }
 
+/* V8 Part 9: Action leads with the recommendation, not a form. Order
+   matches the ticket exactly — Recommended Next Step, Response Options,
+   Governance Route, Opportunity for Influence, Relationship
+   Considerations — with Position/Priority/Response kept as separate,
+   clearly labeled rows below, never collapsed into one combined status. */
 function renderActionResponseFromAnalysis(s, wf, analysis) {
   if (!analysis) return; // renderDetailResponse() already rendered the honest empty state
   const el = document.getElementById('detailResponse');
+  const AR = window.WatchdogAnalysisRendering;
+  const nextStep = AR.recommendedNextStep(analysis);
+  const gov = AR.governanceInfo(analysis);
   const options = Array.isArray(analysis.proposed_response_options) ? analysis.proposed_response_options : [];
+
   el.innerHTML = `
     ${buildRecordedResponseHtml(s, wf)}
     ${aiDraftLabel(analysis)}
+
+    <p class="wf-section-heading">Recommended Next Step</p>
+    <p class="${nextStep.recorded ? 'analysis-summary-full' : 'state-detail'}">${esc(nextStep.text)}</p>
+
+    ${options.length ? `<p class="wf-section-heading" style="margin-top:12px">Response Options</p><ul class="intel-empty-list">${options.map((o) => `<li>${esc(typeof o === 'string' ? o : o.option || '')}</li>`).join('')}</ul>` : ''}
+
+    <dl class="dl-grid" style="margin-top:12px">
+      ${hasVal(gov.recommendedRoute) ? dlRow('Governance Route', esc(gov.recommendedRoute)) : ''}
+      ${hasVal(analysis.opportunity_for_influence) ? dlRow('Opportunity for Influence', esc(analysis.opportunity_for_influence)) : ''}
+      ${hasVal(analysis.relationship_considerations) ? dlRow('Relationship Considerations', esc(analysis.relationship_considerations)) : ''}
+    </dl>
+
+    <p class="wf-required-hint" style="margin-top:8px">This is a proposal, not an applied action. Nothing here is carried out automatically.</p>
+
+    <p class="wf-section-heading" style="margin-top:14px">Position, Priority &amp; Response — kept separate, never one combined status</p>
     <dl class="dl-grid">
+      ${dlRow('Position Status', esc(AR.positionPathwayDisplay(analysis).label))}
       ${hasVal(analysis.intelligence_priority) ? dlRow('Intelligence-Assessed Priority', esc(analysis.intelligence_priority)) : ''}
       ${hasVal(analysis.human_approved_priority) ? dlRow('Human-Approved Priority', esc(analysis.human_approved_priority)) : ''}
       ${hasVal(analysis.urgency) ? dlRow('Urgency', esc(analysis.urgency)) : ''}
-      ${hasVal(analysis.opportunity_for_influence) ? dlRow('Opportunity for Influence', esc(analysis.opportunity_for_influence)) : ''}
-      ${hasVal(analysis.recommended_governance_path) ? dlRow('Governance Route', esc(analysis.recommended_governance_path)) : ''}
-      ${hasVal(analysis.relationship_considerations) ? dlRow('Relationship Considerations', esc(analysis.relationship_considerations)) : ''}
       ${hasVal(analysis.regional_spillover) ? dlRow('Regional Spillover', esc(analysis.regional_spillover)) : ''}
       ${hasVal(analysis.precedent_risk) ? dlRow('Precedent Risk', esc(analysis.precedent_risk)) : ''}
     </dl>
-    ${options.length ? `<p class="wf-section-heading">Response Options</p><ul class="intel-empty-list">${options.map((o) => `<li>${esc(typeof o === 'string' ? o : o.option || '')}</li>`).join('')}</ul>` : ''}
-    <p class="wf-required-hint" style="margin-top:8px">This is a proposal, not an applied action. Nothing here is carried out automatically.</p>
   `;
 }
 
+// V8 Part 2/8: the direct "Generate Intelligence Draft" / "Regenerate
+// Draft" button is never shown — direct AI generation stays disabled
+// (WATCHDOG_AI_ENABLED is not configured; see
+// docs/watchdog-manual-intelligence-pilot.md). Review controls
+// (Mark Reviewed / Approve / Reject / Stale / Supersede) still render
+// for whatever analysis already exists, however it was produced —
+// including one saved through the still-active Intelligence Tools
+// manual-pilot flow above.
 function renderIntelGenControls(s, analysis, allAnalyses) {
   const el = document.getElementById('intelGenContent');
-  const canGenerate = canAdminister();
   const canReview = canEditShared();
 
   const statusLine = analysis
     ? `<span class="${intelStatusBadgeClass(analysis.status)}">${esc(analysis.status)}</span> <span class="state-detail">version ${analysis.analysis_version}${allAnalyses.length > 1 ? ` of ${allAnalyses.length}` : ''}</span>`
-    : `<span class="state-detail">No analysis generated yet.</span>`;
+    : `<span class="state-detail">No analysis has been saved for this signal yet — see Intelligence Tools above.</span>`;
 
-  if (!canGenerate && !analysis) {
-    el.innerHTML = `${statusLine}<p class="wf-required-hint" style="margin-top:6px">Only Administrators can generate an intelligence draft.</p>`;
-    return;
-  }
-
-  const genLabel = analysis ? 'Regenerate Draft' : 'Generate Intelligence Draft';
   const aid = analysis ? esc(analysis.id) : '';
   const reviewButtons = (canReview && analysis && !['Rejected', 'Superseded'].includes(analysis.status)) ? `
     <div class="wf-actions">
@@ -4417,7 +4460,6 @@ function renderIntelGenControls(s, analysis, allAnalyses) {
 
   el.innerHTML = `
     ${statusLine}
-    ${canGenerate ? `<div class="wf-actions" style="margin-top:8px"><button type="button" class="wf-tool-btn" id="intelGenerateBtn" data-trigger="${analysis ? 'regenerate' : 'manual'}">${esc(genLabel)}</button></div>` : ''}
     <div id="intelGenConfirmWrap"></div>
     ${reviewButtons}
     <p class="wf-error" id="intelGenError" role="alert" hidden></p>
@@ -4465,6 +4507,14 @@ async function loadAndRenderIntelligence(s) {
   renderAnalysisTabContent(analysis);
   renderActionResponseFromAnalysis(s, getWorkflow(s), analysis);
   renderIntelGenControls(s, analysis, analyses);
+
+  // V8 Part 8: "Intelligence Tools" (the manual-pilot Build/Copy/Import
+  // flow) starts collapsed once a usable analysis already exists — no
+  // need to see the import tools every time an already-drafted signal is
+  // reopened. Starts open when there's nothing to review yet, so a
+  // Draft-less signal doesn't hide its only available next step.
+  const toolsDetails = document.getElementById('intelToolsDetails');
+  if (toolsDetails) toolsDetails.open = !analysis;
 }
 
 /* ══════════════════════════════════════════════════════════════════
@@ -4684,7 +4734,7 @@ async function handleSaveEditDraft(s, analysisId) {
 let manualPilotState = null;
 
 function renderManualPilotSectionVisibility() {
-  const el = document.getElementById('manualPilotSection');
+  const el = document.getElementById('intelToolsDetails');
   if (el) el.hidden = !canAdminister();
 }
 
@@ -4920,19 +4970,18 @@ function openDetail(id) {
   if (!s) return;
   const c = s._c;
 
-  // Opening detail marks this signal Reviewed (local Review State), unless
-  // an operator action already did so. Capture the returned record so the
-  // "First Reviewed" row and the workflow form below both reflect it. Only
-  // refresh the feed/overview panels when this is genuinely the first
-  // review — a repeat open of an already-reviewed signal is a no-op.
-  const wasAlreadyReviewed = hasVal(getWorkflow(s).reviewedAt);
-  const wfAfterOpen = markReviewed(s);
-  if (!wasAlreadyReviewed) { refreshOverviewPanels(); renderMain(); }
+  // V8 Part 1: opening a signal is a VIEW only — it must never itself
+  // mark the signal Reviewed (see reviewSemantics.js's viewSignal()).
+  // Reviewed only becomes true via the explicit Mark Reviewed control
+  // (renderDetailPrimaryActions) or by saving a substantive workflow
+  // decision (saveWorkflow). wf below always reflects the CURRENT,
+  // unmodified state — nothing here writes anything.
+  const wf = window.WatchdogReviewSemantics.viewSignal(getWorkflow(s));
 
   document.getElementById('detailTitle').textContent = displayHeadline(c);
   currentDetailSignal = s;
   switchDetailTab('brief');
-  renderDetailPrimaryActions(s, wfAfterOpen);
+  renderDetailPrimaryActions(s, wf);
 
   // ── Overview: what the signal IS (plain-language first) ───────────
   const intelRows = [];
@@ -4950,7 +4999,7 @@ function openDetail(id) {
   // the Supabase-sourced "Review Status" row directly below it (new/
   // reviewed/dismissed/promoted, set by the scanner pipeline) — labeled
   // explicitly to avoid the two being confused for one field.
-  const workflowStateLabel = hasVal(wfAfterOpen.status) ? wfAfterOpen.status : 'Unassigned';
+  const workflowStateLabel = hasVal(wf.status) ? wf.status : 'Unassigned';
   intelRows.push(dlRow('Current Workflow State', esc(workflowStateLabel)));
   if (hasVal(c.source)) intelRows.push(dlRow('Source', esc(c.source)));
   if (hasVal(s.detected_at)) intelRows.push(dlRow('Detected', esc(absoluteDate(s.detected_at))));
@@ -4959,7 +5008,7 @@ function openDetail(id) {
   if (hasVal(c.relatedIssues)) intelRows.push(dlRow('Related issues', esc(c.relatedIssues)));
   if (hasVal(c.summary)) intelRows.push(dlRow('Summary', esc(c.summary)));
   if (hasVal(c.whyMatters)) intelRows.push(dlRow('Why it matters (scanner note)', esc(c.whyMatters)));
-  if (hasVal(wfAfterOpen.reviewedAt)) intelRows.push(dlRow('First Reviewed', esc(absoluteDate(wfAfterOpen.reviewedAt))));
+  if (hasVal(wf.reviewedAt)) intelRows.push(dlRow('First Reviewed', esc(absoluteDate(wf.reviewedAt))));
   if (hasVal(c.reviewStatus)) intelRows.push(dlRow('Review Status (scanner)', esc(cap(c.reviewStatus))));
   if (c.reviewStatus === 'dismissed' && hasVal(c.dismissedReason)) intelRows.push(dlRow('Dismissal reason (scanner)', esc(c.dismissedReason)));
 
@@ -4973,8 +5022,8 @@ function openDetail(id) {
   ensureSourceRegistryLoaded().then(() => {
     if (currentDetailSignal === s) renderDetailEvidence(s); // enrich with org name once loaded, if still open
   }).catch(() => {});
-  renderDetailTimeline(s, wfAfterOpen);
-  renderDetailResponse(s, wfAfterOpen);
+  renderDetailTimeline(s, wf);
+  renderDetailResponse(s, wf);
   renderWorkProductsGrid();
   document.getElementById('detailAnalysisContent').innerHTML = ANALYSIS_EMPTY_STATE_HTML;
   document.getElementById('intelGenContent').innerHTML = '<p class="state-detail">Loading intelligence status…</p>';
@@ -4982,7 +5031,7 @@ function openDetail(id) {
   renderManualPilotSectionVisibility();
   loadAndRenderIntelligence(s).catch(() => {});
 
-  populateWorkflowForm(wfAfterOpen);
+  populateWorkflowForm(wf);
   populateSharedCoordinationForm(s);
   renderSignalMatterLinks(s);
   document.getElementById('wfError').hidden = true;

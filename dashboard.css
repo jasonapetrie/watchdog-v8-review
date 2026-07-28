@@ -81,34 +81,32 @@ a:hover{text-decoration-thickness:2px}
 }
 .skip-link:focus{left:0}
 
-/* ── Header ───────────────────────────────────────────────────── */
+/* ── V8 Part 3 — compact header ───────────────────────────────────
+   Two elements only: the title block on the left, one Account menu on
+   the right. Everything that used to compete for space here (user name,
+   role, Glossary, Sign Out, the sync banner) now lives one click away. */
 .hdr{
   background:linear-gradient(135deg,#0f1e33 0%,#122a4d 100%);
   border-bottom:1px solid var(--border);
-  padding:20px 24px;
-  display:flex;justify-content:space-between;align-items:flex-start;
+  padding:14px 24px;
+  display:flex;justify-content:space-between;align-items:center;
   flex-wrap:wrap;gap:14px;
 }
-/* V6.1 header refinement: "Watchdog EWS" is the large primary product
-   title; the connection pill sits beside it, visually secondary (smaller,
-   quieter treatment) even though it shares the row. "North Texas Policy
-   Tracker" is a smaller secondary instance label underneath — the long
-   geographic subtitle (counties) is no longer in the persistent header;
-   jurisdiction configuration itself is untouched and remains available
-   elsewhere in the app (Sources, filters). */
-.hdr-title-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-.hdr-id h1{font-size:26px;font-weight:800;margin:0;color:var(--ink)}
-.hdr-instance{font-size:12px;font-weight:600;color:var(--ink-secondary);margin:4px 0 0;letter-spacing:.02em}
+.hdr-id h1{font-size:20px;font-weight:800;margin:0;color:var(--ink)}
+.hdr-instance{font-size:11.5px;font-weight:600;color:var(--ink-secondary);margin:2px 0 0;letter-spacing:.02em}
 .hdr-status{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.conn-badge{
+/* Quiet by default — only ever shown by JS on a real sync/connectivity
+   failure (see updateSyncBanner() in dashboard.js). Deliberately styled
+   as an alert, never as a neutral/positive "connected" pill: ordinary
+   successful operation must never compete for attention with the work. */
+.conn-badge-error{
   display:inline-flex;align-items:center;gap:6px;
-  background:rgba(255,255,255,.08);
-  border:1px solid var(--border);
-  border-radius:20px;padding:3px 10px;
-  font-size:10.5px;font-weight:700;color:var(--ink-secondary);
-  text-transform:uppercase;letter-spacing:.04em;
+  background:rgba(227,73,72,.14);
+  border:1px solid rgba(227,73,72,.5);
+  border-radius:20px;padding:4px 11px;
+  font-size:11px;font-weight:700;color:#ff9d9d;
 }
-.conn-dot{width:7px;height:7px;border-radius:50%;background:var(--good)}
+.conn-badge-error .conn-dot{width:7px;height:7px;border-radius:50%;background:var(--critical)}
 .hdr-meta{font-size:11.5px;color:var(--ink-muted)}
 
 /* ── Workspace menu (Today's Activity / Export / Import / Reset) ──────
@@ -142,33 +140,6 @@ a:hover{text-decoration-thickness:2px}
 .wf-tool-danger:hover{color:#ffb3b3;border-color:rgba(227,73,72,.7)}
 .wf-tool-msg{font-size:11px;color:var(--ink-muted)}
 
-/* ── Local-only workspace notice ─────────────────────────────────── */
-.local-notice{
-  background:var(--surface-2);
-  border-bottom:1px solid var(--border);
-  padding:7px 24px;
-  font-size:11.5px;color:var(--ink-muted);
-  display:flex;align-items:center;gap:7px;
-}
-
-/* ── Intelligence overview ───────────────────────────────────────── */
-.overview{
-  display:grid;
-  grid-template-columns:repeat(6,1fr);
-  gap:1px;background:var(--border);
-  border-bottom:1px solid var(--border);
-}
-.stat{
-  background:var(--surface);
-  padding:14px 12px;
-  display:flex;flex-direction:column;gap:3px;
-}
-.stat-n{font-size:22px;font-weight:800;line-height:1;color:var(--ink)}
-.stat-l{font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-muted)}
-.s-high .stat-n{color:var(--critical)}
-.s-med  .stat-n{color:var(--warning)}
-.s-mon  .stat-n{color:var(--accent)}
-
 .section-label{
   font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;
   color:var(--ink-muted);margin:0 0 8px;display:flex;align-items:center;gap:8px;
@@ -178,33 +149,6 @@ a:hover{text-decoration-thickness:2px}
   color:var(--wf-accent);border:1px solid rgba(237,161,0,.4);
   border-radius:999px;padding:1px 7px;
 }
-
-/* ── Review Progress — compact (V3.1: Today's Activity moved to the
-   Workspace menu, so this no longer shares a two-column row and the
-   empty second column that used to leave a gap on mobile is gone). ── */
-.rp-panel{
-  background:var(--surface);border-bottom:1px solid var(--border);
-  padding:10px 24px 12px;
-}
-.rp-bar-wrap{background:var(--surface-2);border-radius:999px;height:7px;overflow:hidden;margin-bottom:6px}
-.rp-bar-fill{background:var(--good);height:100%;border-radius:999px}
-/* The bar + reviewed-total statement carry the clearest emphasis in this
-   section (V3.2 §8) — everything else (the metric tiles below) is
-   intentionally smaller/quieter. */
-.rp-bar-label{font-size:12.5px;font-weight:700;color:var(--ink);margin:0 0 8px}
-.rp-metrics{display:flex;flex-wrap:wrap;gap:6px}
-.rp-metric{
-  background:var(--surface-2);border:1px solid var(--border-strong);
-  border-radius:var(--radius-sm);padding:6px 9px;cursor:pointer;
-  display:flex;flex-direction:column;gap:1px;min-width:74px;text-align:left;
-}
-.rp-metric:hover{border-color:var(--ink-muted)}
-.rp-metric-n{font-size:14px;font-weight:800;color:var(--ink)}
-.rp-metric-l{font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-muted)}
-/* A zero shouldn't visually compete with metrics that have something to
-   report — e.g. Matters Updated Today must not dominate at 0 (V3.2 §8). */
-.rp-metric-zero{opacity:.5;background:transparent;border-style:dashed}
-.rp-metric-zero .rp-metric-n{font-weight:600}
 
 /* ── Primary workspace navigation ────────────────────────────────── */
 .primary-nav{
@@ -374,6 +318,8 @@ a:hover{text-decoration-thickness:2px}
 .feed-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px;gap:8px}
 .feed-head h2{font-size:14px;font-weight:700;margin:0;color:var(--ink)}
 .feed-count{font-size:12px;color:var(--ink-muted)}
+/* V8 Part 10: the one review metric that survives — no bar, no wall. */
+.feed-count-needs-review{font-weight:700;color:var(--ink-secondary)}
 .sig-list{display:flex;flex-direction:column;gap:8px}
 
 /* ── Signal card ──────────────────────────────────────────────────
@@ -400,9 +346,10 @@ a:hover{text-decoration-thickness:2px}
 }
 .sig-open:hover{background:var(--surface-2)}
 
-/* Primary action + compact "More" menu (native <details>, no custom
-   popover/overlay code and no filled background box behind it). */
-.sig-actions-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:0 14px 12px}
+/* V8 Part 6: cards no longer have any quick-action row — the whole card
+   opens the signal. .qa-btn etc. remain in use inside the Signal
+   Intelligence Workspace (Mark Reviewed / Monitor / Create Matter) and
+   Policy Matter dialogs, just never on a card itself. */
 .qa-btn{
   background:var(--surface-2);border:1px solid var(--border-strong);
   color:var(--ink-secondary);border-radius:var(--radius-sm);
@@ -460,6 +407,14 @@ a:hover{text-decoration-thickness:2px}
 .chip-good{color:#7be07b;border-color:rgba(12,163,12,.4)}
 .chip-violet{color:#c3bdf5;border-color:rgba(144,133,233,.4)}
 .chip-unreviewed{color:var(--wf-accent);border-color:rgba(237,161,0,.4)}
+/* V8 Part 6: the card's only other meaningful status badge, shown
+   instead of "Unreviewed" once a signal is Action Required — color used
+   only for this and priority/overdue, never decoratively (Part 12). */
+.chip-action-required{color:var(--wf-accent);border-color:rgba(237,161,0,.5);font-weight:700}
+/* V8 Part 4: compact reason label(s) on a Today "Requires Action" row —
+   e.g. "Overdue follow-up", "Action Required" — never more than one per
+   distinct reason even when a record matches several conditions. */
+.chip-reason{color:#ff9d9d;border-color:rgba(227,73,72,.4);font-weight:600}
 
 /* ── Workflow status badges (deliberately distinct from priority hues) ── */
 .wf-badge{
@@ -748,9 +703,44 @@ a:hover{text-decoration-thickness:2px}
   .analysis-areas{grid-template-columns:1fr}
 }
 
-/* ── Overview tab: primary actions row (Review is implicit — opening
-   this workspace already marks Reviewed; Monitor / Create Matter are
-   one click) ─────────────────────────────────────────────────────────── */
+/* ── V8 Part 7: Executive Summary / Recommended Next Step — a complete
+   analytical paragraph, deliberately NOT the 2-line card-snippet clamp
+   (.sig-snip) the V7.1 renderer wrongly reused here. Readable paragraph
+   width, full text, always. ─────────────────────────────────────────── */
+.analysis-summary-full{
+  font-size:12.5px;line-height:1.65;color:var(--ink);
+  margin:0 0 4px;max-width:68ch;
+}
+/* ── V8 Part 7G: the recommendation block leads Analysis (and, in its
+   own instance, Action) — visually distinct from the dense fact grid
+   below it so it reads as "start here," not one more equally-weighted
+   row. ────────────────────────────────────────────────────────────── */
+.analysis-recommendation{
+  background:var(--surface-2);border:1px solid var(--border-strong);
+  border-radius:var(--radius);padding:14px 16px;margin-top:12px;
+}
+.analysis-quick-facts{display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;margin-top:10px}
+.analysis-quick-facts .dl-row{margin-bottom:6px}
+@media(max-width:640px){
+  .analysis-quick-facts{grid-template-columns:1fr}
+}
+.evidence-id-tag{font-size:10px;color:var(--ink-muted);font-weight:600}
+
+/* ── V8 Part 8: Intelligence Tools — the manual-pilot workflow, inside
+   one collapsible section instead of a permanently-open block. Reuses
+   the .tech-disclosure marker treatment for a consistent expand/collapse
+   affordance elsewhere in the app. ───────────────────────────────────── */
+.intel-tools-details{border-top:1px dashed var(--border-strong);padding-top:0}
+.intel-tools-summary{
+  cursor:pointer;list-style:none;display:inline-flex;align-items:center;gap:6px;
+}
+.intel-tools-summary::-webkit-details-marker{display:none}
+.intel-tools-summary::before{content:"▸";font-size:10px;color:var(--ink-muted)}
+.intel-tools-details[open] > .intel-tools-summary::before{content:"▾"}
+.intel-tools-details #manualPilotSection{margin-top:12px}
+
+/* ── Action tab: primary actions row (V8 Part 1/9 — Mark Reviewed only
+   while genuinely unreviewed; Monitor / Create Matter are one click) ── */
 .detail-primary-actions{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
 
 /* ── Why It Matters / Recommended Response — intelligence-ready empty
@@ -903,21 +893,18 @@ a:hover{text-decoration-thickness:2px}
 
 /* ── Mobile ───────────────────────────────────────────────────── */
 @media(max-width:860px){
-  .overview{grid-template-columns:repeat(3,1fr)}
   .attn-grid{grid-template-columns:repeat(2,1fr)}
   .workprod-grid{grid-template-columns:1fr}
   .reports-grid{grid-template-columns:1fr}
 }
 @media(max-width:640px){
-  .hdr{padding:16px}
+  .hdr{padding:14px 16px}
+  .hdr-id h1{font-size:18px}
   .layout{padding:12px;flex-direction:column}
   .filters-panel{position:static;width:100%;flex:none}
-  .overview{grid-template-columns:repeat(2,1fr)}
   .sig-date{margin-left:0}
   .wf-grid{grid-template-columns:1fr}
   .dl-grid{grid-template-columns:1fr}
-  .local-notice{padding:7px 16px;font-size:11px}
-  .rp-panel{padding:10px 16px 12px}
   .primary-nav{padding:14px 16px 0}
   .nav-subtitle{padding:0 16px 10px}
   .pnav-tab{padding:9px 10px;font-size:12px}
@@ -945,4 +932,15 @@ a:hover{text-decoration-thickness:2px}
   .system-menu-panel{position:fixed;top:auto;right:12px;left:12px;width:auto;max-width:none}
   .detail-tabs{padding:0 12px}
   .help-fab{bottom:14px;left:14px}
+
+  /* V8 Part 11 — deliberate mobile hierarchy, not a stacked desktop
+     dashboard: quick-fact grids that assume desktop width collapse to a
+     single column so nothing is clipped or forced into horizontal
+     scroll, and every full-width text block gets a comfortable max-width
+     removed since the viewport itself is already narrow. */
+  .analysis-quick-facts{grid-template-columns:1fr}
+  .analysis-summary-full{max-width:none}
+  .analysis-recommendation{padding:12px}
+  .manual-pilot-diff-grid{grid-template-columns:1fr}
+  .detail-primary-actions{gap:6px}
 }
