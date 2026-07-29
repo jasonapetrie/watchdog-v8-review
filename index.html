@@ -8,7 +8,19 @@
 <link rel="stylesheet" href="dashboard.css">
 </head>
 <body>
-<div id="reviewMirrorBanner" style="position:sticky;top:0;z-index:9999;background:#7a1f1f;color:#fff;font:600 12.5px/1.4 system-ui,sans-serif;text-align:center;padding:5px 10px;">DESIGN REVIEW (V9 "Midnight Watch") — NOT PRODUCTION — fabricated data only, read-only, no login. <a href="review-index.html" style="color:#fff;text-decoration:underline">Review index / fixture-state controls →</a></div>
+<!-- Phase C correction: a compact position:fixed corner badge, not a
+     sticky full-width bar — position:fixed is removed from document
+     flow entirely, so it adds zero height/padding/margin to the
+     application and cannot shift header, nav, viewport-relative
+     sizing, or mobile-dialog height calculations. Dismissible (fixture-
+     only; need not persist across reloads) so a reviewer can inspect
+     exact layout parity with no overlay at all. Placed bottom-left,
+     clear of Account/System/Data Connected/primary nav (top area) and
+     the review-demo panel (bottom-right). -->
+<div id="reviewMirrorBadge" role="status">
+  <a href="review-index.html" id="reviewMirrorBadgeLink">REVIEW MIRROR — NOT PRODUCTION</a>
+  <button type="button" id="reviewMirrorBadgeDismiss" aria-label="Dismiss review mirror badge">&times;</button>
+</div>
 
 <!-- ══ Auth gate — shown until requireActiveSession() resolves. No
      protected content, and no dashboard.js boot, happens before this
@@ -844,7 +856,9 @@
      can read window.WATCHDOG_FIXTURES. Not present in the private
      implementation (Dashboard/app.html has no fixtures.js). -->
 <script src="fixtures.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- Sanitization pass: the real @supabase/supabase-js CDN script has
+     been removed — this mirror never needs it (see auth.js's inert
+     `window.supabase` placeholder and dashboard.js's header comment). -->
 <script src="security.js"></script>
 <script src="auth.js"></script>
 <script src="repository.js"></script>

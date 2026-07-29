@@ -148,4 +148,23 @@
     module.exports = Auth;
   }
   global.WatchdogAuth = Auth;
+
+  // Sanitization pass: the real @supabase/supabase-js CDN script (and the
+  // real project URL/publishable key it would be given) has been removed
+  // from this mirror entirely — see index.html and the header comment in
+  // dashboard.js. boot() still checks `typeof supabase === 'undefined'`
+  // as a load-failure guard before it ever reaches WatchdogAuth.getClient()
+  // (which is what this mirror actually uses), so a bare inert identifier
+  // is defined here purely to satisfy that guard. .createClient() is never
+  // called in this mirror — WatchdogAuth.getClient() always wins the
+  // ternary in boot() first — but it throws rather than silently no-op-ing
+  // if that ever changed, so this can never accidentally start acting like
+  // a real Supabase client.
+  if (typeof global.supabase === 'undefined') {
+    global.supabase = {
+      createClient() {
+        throw new Error('This is a sanitized review mirror — no real Supabase client exists. See auth.js.');
+      },
+    };
+  }
 })(typeof window !== 'undefined' ? window : globalThis);

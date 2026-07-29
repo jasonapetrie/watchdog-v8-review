@@ -54,9 +54,25 @@
     });
   }
 
+  // Phase C: the review identifier badge itself is static markup in
+  // index.html (not injected here), but its dismiss control is fixture-
+  // only interactive behavior, so it's wired here alongside the rest of
+  // the demo-only JS. Dismissing it is a plain class toggle — no
+  // localStorage, no persistence — so a reload always starts with the
+  // badge visible again, and dismissing it never causes a layout shift
+  // (the badge is position:fixed, already outside document flow, both
+  // before and after removal).
+  function wireBadgeDismiss() {
+    const badge = document.getElementById('reviewMirrorBadge');
+    const dismissBtn = document.getElementById('reviewMirrorBadgeDismiss');
+    if (!badge || !dismissBtn) return;
+    dismissBtn.addEventListener('click', () => badge.classList.add('is-dismissed'));
+  }
+
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', addPanel);
+    document.addEventListener('DOMContentLoaded', () => { addPanel(); wireBadgeDismiss(); });
   } else {
     addPanel();
+    wireBadgeDismiss();
   }
 })();

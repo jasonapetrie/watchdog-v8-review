@@ -103,13 +103,30 @@
 
   <h2>Security / sanitization</h2>
   <ol>
-    <li>No Supabase credentials, no Netlify environment values, no authentication of any kind.</li>
-    <li>No production API calls — open your browser's Network tab; nothing here calls anything but this
-      same static origin.</li>
+    <li>No production Supabase project URL and no production publishable key are embedded anywhere in this
+      mirror — dashboard.js's SUPABASE_URL/SUPABASE_ANON are inert placeholders (<code>review-mirror-fixture.invalid</code>),
+      kept only because one dead fallback branch in boot() references the identifiers syntactically; that
+      branch never actually runs here.</li>
+    <li>No Supabase SDK is loaded — the <code>@supabase/supabase-js</code> CDN script has been removed
+      entirely. Fixture <code>auth.js</code> and <code>repository.js</code> provide 100% of the mirror's
+      authentication and data.</li>
+    <li>No Netlify environment values, no authentication of any kind.</li>
+    <li>No production API calls — open your browser's Network tab; the only cross-origin request you'll ever
+      see is nothing at all (no external requests remain after this pass).</li>
     <li>No write operations reach anywhere outside this browser tab's memory; nothing persists past a reload.</li>
     <li>No real signal text, member data, or private notes — every fixture uses <code>example.com</code> URLs
       and fabricated content.</li>
+    <li>Run <code>node sanitization-check.js</code> from this repository to verify all of the above
+      automatically — see the file for what it checks.</li>
   </ol>
+
+  <h2>Review identifier</h2>
+  <p style="color:var(--muted)">A small "REVIEW MIRROR — NOT PRODUCTION" badge is fixed to the bottom-left
+    corner (<code>position:fixed</code>, not sticky, not part of document flow). It adds no height, padding,
+    or margin to the application, so it never affects header/nav/viewport spacing or mobile-dialog height —
+    unlike the full-width banner an earlier pass used. Click the × on the badge to dismiss it entirely if you
+    want to inspect the interface with zero overlay; dismissing it does not shift or resize anything, since it
+    was never part of the layout to begin with. It resets on reload (fixture-only, no persistence).</p>
 
   <p><a class="btn" href="index.html">Open the mirror →</a></p>
 </main>

@@ -1,11 +1,16 @@
 'use strict';
 
-/* ══ Supabase connection ══════════════════════════════════════════
-   Publishable (anon) key only — safe for browser use, scoped by
-   Supabase Row Level Security on the `signals` table. No service-role
-   key or write access exists in this file.                          */
-const SUPABASE_URL  = 'https://hoyovnrdwgvotvzaxbla.supabase.co';
-const SUPABASE_ANON = 'sb_publishable_zSDg5rH_nGYlhOK1LpCeGw_7sZ2Labg';
+/* ══ PUBLIC REVIEW MIRROR — sanitization note ══════════════════════
+   The real product's SUPABASE_URL/SUPABASE_ANON constants have been
+   replaced with inert, non-functional placeholders. They are kept only
+   because boot() below references them in one syntactically-required
+   fallback branch (`: supabase.createClient(SUPABASE_URL, SUPABASE_ANON)`)
+   — that branch is dead code in this mirror specifically: the fixture
+   auth.js always provides window.WatchdogAuth.getClient(), so the
+   ternary it sits in never actually evaluates the fallback. Neither
+   placeholder resolves to any real host or key. ═══════════════════ */
+const SUPABASE_URL  = 'https://review-mirror-fixture.invalid';
+const SUPABASE_ANON = 'fixture-placeholder-not-a-real-key';
 
 const FOCUS_COUNTIES = ['Collin', 'Hunt', 'Rockwall', 'Van Zandt'];
 
