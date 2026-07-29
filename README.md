@@ -76,9 +76,50 @@ wins the code path that would have used them) but both were removed:
   `typeof supabase === 'undefined'` load-failure guard passes — this
   mirror never calls it, since `WatchdogAuth.getClient()` always wins
   first.
-- `sanitization-check.js` (see below) fails the build if the real
-  hostname, the real key, a service-role-shaped key, the CDN script, or
-  any known production API endpoint is ever reintroduced.
+- `sanitization-check.js` (see below) fails if the real hostname, the
+  real key, a service-role-shaped key, the CDN script, or any known
+  production API endpoint is ever reintroduced.
+
+### The checker's own design
+
+An earlier version of `sanitization-check.js` itself contained the real
+production Supabase hostname, the real publishable key, the real
+production Netlify hostname, and the real production custom domain as
+literal detection patterns — and then excluded its own file from the
+scan. That made a "0 violations" result meaningless: the repository
+still contained every value the checker claimed was absent, inside the
+checker itself.
+
+The corrected design:
+
+- **No self-exclusion.** The checker scans every file in this
+  repository, including its own source. If a real production value were
+  ever pasted into `sanitization-check.js` again, the checker would
+  catch it there too.
+- **Generic, structural rules wherever a real production value has a
+  detectable shape** — any Supabase project hostname, any publishable
+  or secret-shaped Supabase key, any JWT-shaped key, a Supabase SDK
+  script tag or version-pinned CDN reference, any Netlify Functions
+  endpoint path, any Netlify preview/production hostname. None of these
+  rules contain or require the actual Watchdog-specific value to detect
+  it — see `sanitization-check.js` itself for the exact patterns.
+- **A one-way SHA-256 digest comparison for the one value with no
+  generic structural shape** — the production custom domain. Only its
+  hash is stored in the checker; the plaintext domain is not written
+  anywhere in this repository. The checker extracts every domain-shaped
+  token from scanned text and compares its hash against the stored
+  digest — a hash cannot be reversed back into the domain that produced
+  it.
+- **A self-test using only fabricated canary values** (never a real
+  Watchdog value, never even a fragment of one) runs before the real
+  scan, to prove every rule actually fires. The canaries are assembled
+  from split fragments at runtime specifically so they don't sit in the
+  checker's own source as one matchable literal — otherwise a self-
+  scanning checker could never pass while also self-testing.
+
+Run `node sanitization-check.js`. It prints the self-test result first,
+then scans the full repository (including itself) and exits non-zero on
+any violation.
 
 ## What's in this repository
 
@@ -119,11 +160,15 @@ wins the code path that would have used them) but both were removed:
   fixture state, and interaction, with exact click paths and which
   fixture signal demonstrates which state.
 - `sanitization-check.js` — a small, dependency-free Node script that
-  scans every delivered file for production Supabase hosts/keys,
-  service-role-shaped keys, the Supabase SDK CDN reference, and known
-  Watchdog production API endpoints. Run it with `node sanitization-check.js`;
-  it exits non-zero on any match. Run before every commit to this
-  repository.
+  scans every delivered file — including its own source, deliberately,
+  no self-exclusion — for production Supabase hosts/keys, service-role-
+  shaped keys, the Supabase SDK CDN reference, and known Watchdog
+  production API endpoints, using generic structural rules plus a one-
+  way SHA-256 digest comparison for the one value with no generic shape
+  (see "The checker's own design" above). Runs a fabricated-canary self-
+  test first. Run it with `node sanitization-check.js`; it exits non-
+  zero on any real violation or on a failed self-test. Run before every
+  commit to this repository.
 - `robots.txt` — disallows all crawling
 
 No production source code, no Netlify Functions, no environment files,
