@@ -67,7 +67,7 @@
     menu — Sources includes Organizations/Endpoints/Reporter Watches/Special Districts/Exclusions/Health
     sub-tabs.</p></div>
 
-  <h2>Intelligence Workspace (signal detail dialog)</h2>
+  <h2>Signal Detail (signal detail dialog)</h2>
   <div class="card"><h3>Issue Brief / Action tabs</h3><p>Open any signal — the dialog opens on Issue Brief;
     the Action tab has the "Position, Priority &amp; Response" heading with its supporting line beneath it.</p></div>
   <div class="card"><h3>Unapproved AI draft</h3><p>Signal 9004 (Rockwall road bond) → Analysis tab: status
@@ -87,6 +87,21 @@
   <div class="card"><h3>Mobile long-content / scroll / close-control reachability</h3><p>At ≤640px width, open
     signal 9002 (long title), scroll the body — the title compacts to one line after ~24px of scroll; the
     close button and tab strip never scroll away; background page doesn't scroll behind the dialog.</p></div>
+
+  <h2>V9 hotfix — migration assistant removed, "Workspace" language corrected, dialog sizing scoped to Signal Detail</h2>
+  <div class="card"><h3>No migration prompt on boot</h3><p>Reload the mirror (or sign in fresh) — no "Import Your
+    Local Watchdog Workspace" dialog, or any other automatic dialog besides the orientation welcome screen
+    (first visit only), ever appears. There is no migration route left to reach at all.</p></div>
+  <div class="card"><h3>Account menu wording</h3><p>Open Account (top right) — the export control now reads
+    "Download Data Copy," not "Download Workspace Backup."</p></div>
+  <div class="card"><h3>Generic dialogs size to content, not to Signal Detail's height</h3><p>Open Policy Matter
+    Detail (Active Matters tab → any matter card), Matter Picker, Today's Activity (Account menu), Glossary
+    (Account menu), and Orientation — each sizes to its own content with a viewport-percentage safety cap, not
+    Signal Detail's fixed 85vh/85dvh (desktop) or 92vh/92dvh (mobile). Today's Activity in particular should
+    look like a small, natural-height panel, not a mostly-empty near-full-viewport dialog.</p></div>
+  <div class="card"><h3>Signal Detail unaffected</h3><p>Signal Detail (above) still gets the definite height —
+    confirm its Issue Brief/Analysis/Action tabs, long-title handling, and scroll behavior are unchanged from
+    before this pass.</p></div>
 
   <h2>Data Connection Status<span class="demo-tag">review demo only</span></h2>
   <div class="card"><h3>Connecting / Data Connected / Experiencing Delays / Sync Failed</h3><p>A small

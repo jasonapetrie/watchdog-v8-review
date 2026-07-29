@@ -721,16 +721,39 @@ a:hover{text-decoration-thickness:2px}
   background:var(--surface);color:var(--ink);
   border:1px solid var(--border-strong);border-radius:var(--radius-panel);
   padding:0;width:min(680px,92vw);
+  /* Generic dialogs (every dialog sharing this class except Signal
+     Detail) size to their own content, up to this max-height safety
+     cap — .detail-head/.detail-tabs stay flex-shrink:0 (always fully
+     visible) and .detail-body's own overflow-y:auto (below) becomes the
+     scrolling region only if content actually exceeds the cap. Signal
+     Detail needs a *definite* height instead of just a cap — see
+     #detailDialog.detail-dialog below — so it gets its own rule rather
+     than sharing this one. */
   max-height:85vh;max-height:85dvh;
   display:flex;flex-direction:column;overflow:hidden;
   box-shadow:0 20px 60px rgba(0,0,0,.5);
 }
-/* Signal Intelligence Workspace only (not the smaller confirm/picker
-   dialogs, which stay at the compact width above): ~75-85% of viewport
-   on standard desktop/laptop screens, sensible cap so it never sprawls
-   edge-to-edge on very wide monitors. A professional issue-brief width,
-   not a narrow settings-modal width. Narrow/mobile behavior (92vw,
-   stacked columns) is unchanged from the base rule above. */
+/* Signal Detail only: a <dialog> element's UA default is
+   height:fit-content, and max-height alone never overrides that — it
+   only caps an already-auto height, it doesn't make the box definite.
+   Without an explicit `height` here, this flex column has no definite
+   height to distribute, so .detail-body's `flex:1;min-height:0` below
+   collapses toward zero instead of filling the remaining space across
+   the Issue Brief/Analysis/Action tabs: exactly the "modal shell/title/
+   tabs fine, body collapses" release blocker. `height` makes the
+   container's height definite so flex-grow has something real to
+   distribute; the generic .detail-dialog rule above already supplies
+   matching max-height/display/overflow. Every other dialog that shares
+   .detail-dialog sizes to content instead — they don't have Signal
+   Detail's tabbed flex:1 body, so forcing the same definite height on a
+   two-line confirm dialog would just waste most of the viewport. */
+#detailDialog.detail-dialog{height:85vh;height:85dvh}
+/* Signal Detail only (not the smaller confirm/picker dialogs, which stay
+   at the compact width above): ~75-85% of viewport on standard
+   desktop/laptop screens, sensible cap so it never sprawls edge-to-edge
+   on very wide monitors. A professional issue-brief width, not a narrow
+   settings-modal width. Narrow/mobile behavior (92vw, stacked columns)
+   is unchanged from the base rule above. */
 @media(min-width:900px){
   #detailDialog.detail-dialog{width:min(80vw,1180px)}
 }
@@ -738,8 +761,10 @@ a:hover{text-decoration-thickness:2px}
   /* More of the viewport on a small screen, still never fully edge-to-
      edge (a visible margin reads as a dialog, not a full-page takeover,
      and keeps the rounded-panel language consistent with the rest of
-     the app). */
+     the app). Generic dialogs get a taller cap only; Signal Detail gets
+     the matching definite height. */
   .detail-dialog{max-height:92vh;max-height:92dvh}
+  #detailDialog.detail-dialog{height:92vh;height:92dvh}
 }
 .detail-dialog::backdrop{background:rgba(0,0,0,.6)}
 .detail-head{

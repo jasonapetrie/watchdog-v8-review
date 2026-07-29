@@ -16,7 +16,7 @@ const FOCUS_COUNTIES = ['Collin', 'Hunt', 'Rockwall', 'Van Zandt'];
 
 /* ── State ────────────────────────────────────────────────────── */
 let db = null;
-var currentUserId = null;   // set by boot(userId); var so it's window-reachable for migration.js and testing
+var currentUserId = null;   // set by boot(userId); var so it's window-reachable for testing
 var currentUserRole = null; // set by boot(userId, role) — Administrator | Collaborator | Operator | Viewer
 var rawSignals = [];       // focus-county signals as loaded from Supabase, cleaned in place (var: reachable as window.rawSignals for testing/debugging)
 var displaySignals = [];   // rawSignals after display-level duplicate suppression (var: same reason)
@@ -591,7 +591,7 @@ async function loadWorkflowStoreForUser(userId) {
   try {
     remoteRecords = await window.WatchdogRepository.fetchMySignalUserState(userId);
   } catch (err) {
-    console.error('Could not load personal workspace from Supabase:', err);
+    console.error('Could not load personal workflow data from Supabase:', err);
     syncOk = false;
   }
 
@@ -1427,15 +1427,15 @@ function importWorkspaceFile(file) {
     // file-restore control would either silently fail to persist (signals)
     // or, worse, overwrite SHARED team data other users depend on
     // (matters) from a personal backup file. Retired for authenticated
-    // mode entirely; both are managed through their own synced workspaces
-    // (the Migration Assistant for legacy signal decisions, the Policy
-    // Matters workspace directly for matters) instead.
+    // mode entirely; both are managed directly instead — signal decisions
+    // sync automatically to your account, Policy Matters are managed
+    // directly in Active Matters.
     if (currentUserId) {
-      setWfToolMsg('Import Workspace is not available while your workspace is synced to your account. Signal decisions are managed by the Migration Assistant; Policy Matters are shared and managed directly in the Policy Matters workspace.', true);
+      setWfToolMsg('Import is not available while your account is signed in. Signal decisions sync automatically to your account; Policy Matters are shared and managed directly in Active Matters.', true);
       return;
     }
 
-    if (!window.confirm(`Import ${sigCount} signal record(s) and ${matterCount} Policy Matter(s)? This REPLACES your current local workspace on this browser — export first if you want to keep what's currently here.`)) {
+    if (!window.confirm(`Import ${sigCount} signal record(s) and ${matterCount} Policy Matter(s)? This REPLACES your current local data on this browser — export first if you want to keep what's currently here.`)) {
       return;
     }
     workflowStore = { version: 3, records: result.records, matters: result.matters };
@@ -1458,7 +1458,7 @@ function resetWorkspace() {
   if (currentUserId) {
     const cache = loadUserScopedCache(currentUserId);
     const overflowCount = Object.keys(cache.overflow).length;
-    if (!overflowCount) { setWfToolMsg('No local-only workspace data to reset.'); return; }
+    if (!overflowCount) { setWfToolMsg('No locally cached activity history to reset.'); return; }
     if (!window.confirm(
       `This permanently deletes locally cached activity history for ${overflowCount} signal(s) on this browser.\n\n` +
       `Your saved Workflow Status, Response Level, notes, and other synced decisions in your account — and all shared Policy Matters and Shared Coordination — are NOT affected.\n\n` +
@@ -1474,9 +1474,9 @@ function resetWorkspace() {
 
   const sigCount = Object.keys(workflowStore.records).length;
   const matterCount = Object.keys(workflowStore.matters || {}).length;
-  if (!sigCount && !matterCount) { setWfToolMsg('No local workspace data to reset.'); return; }
+  if (!sigCount && !matterCount) { setWfToolMsg('No local data to reset.'); return; }
   if (!window.confirm(
-    `This permanently deletes ALL local workspace data on this browser:\n` +
+    `This permanently deletes ALL local data on this browser:\n` +
     `• ${sigCount} signal workflow decision(s), including local review history\n` +
     `• ${matterCount} Policy Matter(s), including matter history\n\n` +
     `This cannot be undone. Continue?`
@@ -1485,7 +1485,7 @@ function resetWorkspace() {
   persistWorkflowStore();
   refreshOverviewPanels();
   renderMain();
-  setWfToolMsg('Local workspace has been reset.');
+  setWfToolMsg('Local data has been reset.');
 }
 
 function setWfToolMsg(msg, isError) {
@@ -1593,8 +1593,8 @@ async function boot(userId, role) {
   try {
     await loadSharedCollaborationState();
   } catch (err) {
-    console.error('Could not load shared workspace from Supabase:', err);
-    showToast('Could not load the shared workspace — Policy Matters and Shared Coordination may be incomplete. Try reloading.');
+    console.error('Could not load shared collaboration data from Supabase:', err);
+    showToast('Could not load Policy Matter and team-coordination data. Try reloading.');
     sharedOk = false;
   }
 
@@ -1611,10 +1611,6 @@ async function boot(userId, role) {
 
   if (currentUserId && window.WatchdogRealtime) {
     window.WatchdogRealtime.subscribeSharedChannels(handleSharedRealtimeChange);
-  }
-
-  if (currentUserId && window.WatchdogMigration) {
-    window.WatchdogMigration.checkAndPromptIfNeeded(currentUserId, currentUserRole);
   }
 
   maybeShowOrientation();
@@ -1675,7 +1671,7 @@ async function handleSharedRealtimeChange() {
   try {
     await loadSharedCollaborationState();
   } catch (err) {
-    console.error('Could not refresh shared workspace after a realtime update:', err);
+    console.error('Could not refresh shared collaboration data after a realtime update:', err);
     return;
   }
   const newEvents = sharedAuditEvents.filter(e => !previousAuditIds.has(e.id) && e.actor_user_id !== currentUserId);
@@ -1690,8 +1686,8 @@ function notifySharedChange(newEvents) {
   if (!newEvents.length) return; // nothing new, or only this user's own change (no self-notification)
   const lines = newEvents.flatMap(formatAttributedLines);
   if (lines.length === 1) showToast(lines[0]);
-  else if (lines.length > 1) showToast(`${lines.length} shared workspace updates from other users.`);
-  else showToast('Shared workspace updated by another user.');
+  else if (lines.length > 1) showToast(`${lines.length} shared updates from other users.`);
+  else showToast('Shared data updated by another user.');
 }
 
 function checkMatterDialogStale() {
@@ -4664,7 +4660,7 @@ function intelGenConfirmHtml(s, triggerType) {
     <div class="intel-gen-confirm-row"><dt>Primary source available</dt><dd>${hasPrimarySource ? 'Yes' : 'No'}</dd></div>
     <div class="intel-gen-confirm-row"><dt>Jurisdiction</dt><dd>${esc(s._c.jurisdiction || 'Unknown')}</dd></div>
     <div class="intel-gen-confirm-row"><dt>Analysis status after generation</dt><dd>Draft (human review required)</dd></div>
-    <p class="wf-required-hint" style="margin-top:8px">This sends the signal's title, snippet, source, and any matched position/jurisdiction context to the configured AI provider. It never sends personal workspace notes.</p>
+    <p class="wf-required-hint" style="margin-top:8px">This sends the signal's title, snippet, source, and any matched position/jurisdiction context to the configured AI provider. It never sends your personal decision notes.</p>
     <div class="wf-actions" style="margin-top:10px">
       <button type="button" class="wf-save-btn" id="intelGenConfirmBtn" data-trigger="${esc(triggerType)}">Confirm &amp; Generate</button>
       <button type="button" class="wf-tool-btn" id="intelGenCancelBtn">Cancel</button>

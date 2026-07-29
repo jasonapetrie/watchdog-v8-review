@@ -56,6 +56,37 @@ heading. Issue Brief, Analysis, and Action **content** — what Jason called
 "exceptionally strong" — was not simplified, reordered, or regenerated at
 any point in this or the prior pass.
 
+## What changed in the V9 hotfix pass ("remove legacy 'Workspace' migration and correct dialog behavior")
+
+- **Migration assistant removed.** The legacy V3→V4 localStorage
+  "Import Your Local Watchdog Workspace" migration dialog, its script
+  (`migration.js`), and the boot-time trigger that could open it are all
+  gone — it was a retired one-time upgrade utility, not an approved
+  ongoing product feature. There is no replacement banner, warning, or
+  hidden route; nothing is auto-imported.
+- **"Workspace" retired as user-facing product language.** Every
+  rendered string that said "Workspace" now says something specific:
+  the Account-menu control reads "Download Data Copy" (was "Download
+  Workspace Backup"), the Signal Detail tab strip's aria-label reads
+  "Signal intelligence," the primary navigation's aria-label reads
+  "Primary navigation," the Policy Matter Detail attribution reads
+  "Saved to your team's shared Policy Matter data," and shared-data
+  load-failure messages name the actual resource (Policy Matter and
+  team-coordination data) instead of a generic "shared workspace."
+  Internal-only identifiers that were never shown to a user
+  (`workflowStore`, `exportWorkspace()`, the `workspace-menu` CSS
+  class/`workspaceMenu` element id) were deliberately left alone —
+  renaming them added regression risk for zero user-facing benefit.
+- **Dialog height fix rescoped to Signal Detail only.** The prior
+  hotfix's definite 85vh/85dvh desktop and 92vh/92dvh mobile height
+  (needed so Signal Detail's tabbed body never collapses) had been
+  applied to every dialog sharing the `.detail-dialog` class. It's now
+  scoped to `#detailDialog` (Signal Detail) specifically — Policy
+  Matter Detail, Matter Picker, Today's Activity, Glossary, and
+  Orientation size to their own content again, capped at the same
+  viewport percentage only as a safety ceiling, with `.detail-body`
+  scrolling internally if content ever exceeds it.
+
 ## Sanitization (dashboard.js / index.html / auth.js)
 
 An earlier version of this mirror embedded the real product's Supabase
@@ -136,8 +167,10 @@ any violation.
   badge above
 - `dashboard.js` — the real product's rendering and interaction logic,
   unmodified except for the sanitized Supabase constants described above
-- `editFormLogic.js`, `security.js`, `migration.js` — pure logic/DOM
-  helper modules, unmodified from the real product
+- `editFormLogic.js`, `security.js` — pure logic/DOM helper modules,
+  unmodified from the real product (the legacy `migration.js` module was
+  removed from the real product in the V9 hotfix pass — see above — and
+  is no longer present here either)
 - `reviewSemantics.js`, `analysisRendering.js` — pure logic modules,
   unmodified from the real product
 - `app-boot.js` — page bootstrap, unmodified from the real product

@@ -8,6 +8,7 @@
 <link rel="stylesheet" href="dashboard.css">
 </head>
 <body>
+
 <!-- Phase C correction: a compact position:fixed corner badge, not a
      sticky full-width bar — position:fixed is removed from document
      flow entirely, so it adds zero height/padding/margin to the
@@ -40,7 +41,7 @@
     <p style="color:var(--ink-secondary)">
       You're signed in, but the V4 database schema has not been installed on
       this project yet. An Administrator needs to apply the pending
-      migration before the protected workspace becomes available.
+      migration before Watchdog becomes available.
     </p>
     <button type="button" class="wf-tool-btn" id="schemaMissingSignOut">Sign Out</button>
   </div>
@@ -80,7 +81,7 @@
         <p class="hdr-meta" id="hdrUserRole">—</p>
         <div class="wsm-divider"></div>
         <!-- Account menu item order (Phase F): Today's Activity, Glossary,
-             Download Workspace Backup, Sign Out. -->
+             Download Data Copy, Sign Out. -->
         <p class="wsm-heading">Today's Activity</p>
         <div id="todaysActivityMini" class="wf-history"></div>
         <button type="button" class="wf-tool-btn" id="viewAllActivityBtn">View All Activity</button>
@@ -96,7 +97,7 @@
              NOT reset your synced workflow decisions or shared Policy
              Matters — only a local browser cache of activity-history
              overflow (see resetWorkspace() in dashboard.js). -->
-        <button class="wf-tool-btn" id="exportBtn" type="button">Download Workspace Backup</button>
+        <button class="wf-tool-btn" id="exportBtn" type="button">Download Data Copy</button>
         <button class="wf-tool-btn wf-tool-danger" id="resetWorkspaceBtn" type="button">Clear Locally Cached Activity History</button>
         <span class="wf-tool-msg" id="wfToolMsg" role="status" aria-live="polite"></span>
         <div class="wsm-divider"></div>
@@ -113,7 +114,7 @@
      Queue / System Health) lives in the subordinate "System" menu, not
      as an equal tab — it must never visually compete with the GAD's
      daily work. ══════════════════════════════════════════════════════ -->
-<nav class="primary-nav" id="primaryNav" role="tablist" aria-label="Workspace navigation">
+<nav class="primary-nav" id="primaryNav" role="tablist" aria-label="Primary navigation">
   <button class="pnav-tab active" role="tab" aria-selected="true" data-primary="today">Today</button>
   <button class="pnav-tab" role="tab" aria-selected="false" data-primary="signals">Intelligence</button>
   <button class="pnav-tab" role="tab" aria-selected="false" data-primary="matters">Active Matters</button>
@@ -432,7 +433,7 @@
     <h2 id="detailTitle">Signal detail</h2>
     <button class="detail-close" id="detailClose" type="button" aria-label="Close detail view">✕</button>
   </div>
-  <div class="detail-tabs" id="detailTabs" role="tablist" aria-label="Signal Intelligence Workspace">
+  <div class="detail-tabs" id="detailTabs" role="tablist" aria-label="Signal intelligence">
     <button class="detail-tab active" role="tab" aria-selected="true" data-dtab="brief">Issue Brief</button>
     <button class="detail-tab" role="tab" aria-selected="false" data-dtab="analysis">Analysis</button>
     <button class="detail-tab" role="tab" aria-selected="false" data-dtab="action">Action</button>
@@ -771,7 +772,7 @@
 
     <div class="wf-actions">
       <button type="button" class="wf-save-btn" id="matterSaveBtn">Save Changes</button>
-      <span class="wf-saved-note" id="mAttribution">Saved to your team's shared workspace.</span>
+      <span class="wf-saved-note" id="mAttribution">Saved to your team's shared Policy Matter data.</span>
     </div>
 
     <p class="wf-section-heading">Attached Signals (<span id="matterSignalCount">0</span>)</p>
@@ -826,30 +827,6 @@
   </div>
 </dialog>
 
-<!-- ══ Legacy workspace migration assistant ═══════════════════════════ -->
-<dialog id="migrationDialog" class="detail-dialog" aria-labelledby="migrationDialogTitle">
-  <div class="detail-head">
-    <h2 id="migrationDialogTitle">Import Your Local Watchdog Workspace</h2>
-  </div>
-  <div class="detail-body">
-    <p>This browser contains a local Watchdog workspace. Importing will attach its personal decisions to this account.</p>
-    <p class="wf-section-heading">What will be imported</p>
-    <dl class="dl-grid">
-      <div class="dl-row"><dt>Reviewed</dt><dd id="migCountReviewed">0</dd></div>
-      <div class="dl-row"><dt>Monitoring</dt><dd id="migCountMonitoring">0</dd></div>
-      <div class="dl-row"><dt>Action Required</dt><dd id="migCountActionRequired">0</dd></div>
-      <div class="dl-row"><dt>Closed</dt><dd id="migCountClosed">0</dd></div>
-      <div class="dl-row"><dt>Dismissed</dt><dd id="migCountDismissed">0</dd></div>
-    </dl>
-    <p class="wf-required-hint">Your local workspace is not deleted or modified by this import — it stays in this browser as a backup. You can use Export Workspace from the Workspace menu first if you'd like an extra copy.</p>
-    <p id="migResultMsg" role="status" hidden></p>
-    <div class="wf-actions">
-      <button type="button" class="wf-save-btn" id="migImportBtn">Import Personal Workspace</button>
-      <button type="button" class="wf-tool-btn" id="migCancelBtn">Not Now</button>
-    </div>
-  </div>
-</dialog>
-
 </div><!-- /#appRoot -->
 
 <!-- REVIEW MIRROR ONLY — fixture data, loaded first so auth.js/repository.js
@@ -863,7 +840,6 @@
 <script src="auth.js"></script>
 <script src="repository.js"></script>
 <script src="realtime.js"></script>
-<script src="migration.js"></script>
 <script src="editFormLogic.js"></script>
 <script src="reviewSemantics.js"></script>
 <script src="analysisRendering.js"></script>
