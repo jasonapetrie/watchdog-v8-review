@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Watchdog EWS V9 — Review Index (Design Review Mirror)</title>
+<style>
+  :root{color-scheme:dark;--bg:#0a0d10;--surface:#14181c;--border:#2a3138;--ink:#e8edf0;--muted:#9aa7ad;--accent:#5ec3e8;--warn:#e8756d;}
+  *{box-sizing:border-box}
+  body{background:var(--bg);color:var(--ink);font:15px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif;margin:0;padding:0 0 60px}
+  header{background:#7a1f1f;color:#fff;padding:14px 20px;font-weight:700;text-align:center}
+  main{max-width:880px;margin:0 auto;padding:24px 20px}
+  h1{font-size:24px;margin:0 0 4px}
+  h2{font-size:17px;margin:32px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--border);color:var(--accent)}
+  .sub{color:var(--muted);margin:0 0 20px}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px 16px;margin-bottom:10px}
+  .card h3{margin:0 0 6px;font-size:14px}
+  .card p{margin:0;color:var(--muted);font-size:13.5px}
+  code{background:#1e2530;padding:1px 6px;border-radius:4px;font-size:12.5px}
+  a.btn{display:inline-block;background:var(--accent);color:#04202b;font-weight:700;padding:10px 18px;border-radius:7px;text-decoration:none;margin:8px 0}
+  a.btn:hover{filter:brightness(1.1)}
+  .demo-tag{display:inline-block;background:rgba(232,117,109,.15);color:var(--warn);border:1px solid rgba(232,117,109,.4);font-size:10.5px;font-weight:800;letter-spacing:.05em;padding:2px 7px;border-radius:5px;text-transform:uppercase;margin-left:6px}
+  ol{padding-left:20px;color:var(--muted);font-size:13.5px}
+  ol li{margin-bottom:4px}
+</style>
+</head>
+<body>
+<header>DESIGN REVIEW MIRROR — NOT PRODUCTION — fabricated data only, read-only, no login</header>
+<main>
+  <h1>Watchdog EWS V9 "Midnight Watch" — Review Index</h1>
+  <p class="sub">Sanitized public mirror for the display-refinement pass. Reuses the real application's
+    markup, CSS, and JS verbatim — the only substitutions are the auth/data layer (auth.js, repository.js,
+    realtime.js, fixtures.js), which never contact Supabase or any real backend.</p>
+
+  <p><a class="btn" href="index.html">Open the mirror →</a></p>
+
+  <h2>Today</h2>
+  <div class="card"><h3>No Requires Action state (default)</h3><p>Open the mirror — Today loads with a fresh
+    session, so Requires Action starts empty. This is the true default state, not a fixture shortcut.</p></div>
+  <div class="card"><h3>Populated Requires Action state</h3><p>Open any signal from Intelligence → Action tab
+    → set Workflow Status to "Action Required" → Save Changes → back to Today. This is the real save path,
+    not a demo shortcut, so it also proves the round-trip works.</p></div>
+  <div class="card"><h3>New Intelligence / Active Matters Updated / spacing / navigation descriptor</h3>
+    <p>Visible on Today by default — check heading-to-section spacing, the New Intelligence title/count/
+    "Go to Intelligence →" row, and card-group spacing at both desktop and 390px widths.</p></div>
+
+  <h2>Intelligence</h2>
+  <div class="card"><h3>Status filters (2×2) / Priority filters</h3><p>Intelligence tab — the Status group
+    (All, Needs Review, Monitoring, Escalated to Matter) is a 2×2 grid; Priority (All, High, Medium, Monitor)
+    is four-across on desktop, 2×2 on narrow widths.</p></div>
+  <div class="card"><h3>High / Medium / Monitor / Unreviewed / Reviewed signals</h3><p>The default feed
+    includes all five states across the fixture signal set — filter by Priority to isolate each one; an
+    unreviewed signal shows a restrained cyan outline tag, a reviewed one shows nothing extra.</p></div>
+  <div class="card"><h3>Individual card spacing / long title / source qualification</h3><p>Signal
+    "Plano ISD Board Meeting Agenda Item 7.3…" (id 9002) has a long title — good for both card-clamp and the
+    mobile compact-title behavior once its Issue Brief is open and scrolled. Signal 9001 (Allen zoning) is
+    <code>is_verified_public_source</code>; signal 9005 (Community Impact re-coverage) is
+    <code>is_member_signal</code> — open each to see the qualification badges in the Evidence panel.</p></div>
+
+  <h2>System</h2>
+  <div class="card"><h3>Closed / open / dismissal</h3><p>Click "System ▾" in the primary nav to open it; click
+    it again, click a destination (Sources/Validation Queue/System Health), click anywhere outside it, or
+    press Escape — each closes it. Opening Account (top right) while System is open closes System, and vice
+    versa. Escape returns keyboard focus to whichever trigger you opened.</p></div>
+  <div class="card"><h3>Sources / Validation Queue / System Health</h3><p>Each destination inside the System
+    menu — Sources includes Organizations/Endpoints/Reporter Watches/Special Districts/Exclusions/Health
+    sub-tabs.</p></div>
+
+  <h2>Intelligence Workspace (signal detail dialog)</h2>
+  <div class="card"><h3>Issue Brief / Action tabs</h3><p>Open any signal — the dialog opens on Issue Brief;
+    the Action tab has the "Position, Priority &amp; Response" heading with its supporting line beneath it.</p></div>
+  <div class="card"><h3>Unapproved AI draft</h3><p>Signal 9004 (Rockwall road bond) → Analysis tab: status
+    <strong>Draft</strong>, shows the "AI-generated draft — human review required" label.</p></div>
+  <div class="card"><h3>Human Reviewed (also unapproved)</h3><p>Signal 9001 (Allen zoning) → Analysis: status
+    <strong>Human Reviewed</strong> — still shows the AI-draft warning (reviewed ≠ approved), and no
+    "Approved for Internal Use" state.</p></div>
+  <div class="card"><h3>Approved version</h3><p>Signal 9002 (Plano ISD, long title) → Analysis: status
+    <strong>Approved for Internal Use</strong>, version 2 shown — no AI-draft warning, no active "Approve for
+    Internal Use" button (it's already approved).</p></div>
+  <div class="card"><h3>Stale version + no-citation state</h3><p>Signal 9003 (Greenville sign rules) →
+    Analysis: status <strong>Stale</strong>, and its citations array is empty — confirm the whole "Citations"
+    heading is absent, not an empty one.</p></div>
+  <div class="card"><h3>Superseded version + partially-empty citations</h3><p>Signal 9006 (Van Zandt STR
+    registration) → Analysis: status <strong>Superseded</strong>; its citations array has one entirely-empty
+    object and one real one — confirm only the real one renders.</p></div>
+  <div class="card"><h3>Mobile long-content / scroll / close-control reachability</h3><p>At ≤640px width, open
+    signal 9002 (long title), scroll the body — the title compacts to one line after ~24px of scroll; the
+    close button and tab strip never scroll away; background page doesn't scroll behind the dialog.</p></div>
+
+  <h2>Data Connection Status<span class="demo-tag">review demo only</span></h2>
+  <div class="card"><h3>Connecting / Data Connected / Experiencing Delays / Sync Failed</h3><p>A small
+    "REVIEW DEMO ONLY" panel is pinned to the bottom-right of the mirror (top on mobile) with one button per
+    state — calls the exact same <code>updateSyncBanner()</code> function the real boot sequence calls, so
+    the visual result is identical to what production actually renders in each case. This panel does not
+    exist in the private implementation.</p></div>
+
+  <h2>Breakpoints</h2>
+  <ol>
+    <li>Desktop review: resize the browser window to ≥1400px, or use your browser's responsive-design mode.</li>
+    <li>Mobile review: responsive-design mode at 390×844 (iPhone 12/13/14 size) is what this pass was verified against.</li>
+  </ol>
+
+  <h2>Security / sanitization</h2>
+  <ol>
+    <li>No Supabase credentials, no Netlify environment values, no authentication of any kind.</li>
+    <li>No production API calls — open your browser's Network tab; nothing here calls anything but this
+      same static origin.</li>
+    <li>No write operations reach anywhere outside this browser tab's memory; nothing persists past a reload.</li>
+    <li>No real signal text, member data, or private notes — every fixture uses <code>example.com</code> URLs
+      and fabricated content.</li>
+  </ol>
+
+  <p><a class="btn" href="index.html">Open the mirror →</a></p>
+</main>
+</body>
+</html>

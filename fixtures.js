@@ -99,7 +99,7 @@
       why_matters: null, meeting_body: null, staff_contact: null, related_issues: null, dismissed_reason: null,
       matched_keywords: ['zoning', 'mixed-use'], url: 'https://example.com/communityimpact/allen-zoning',
       published_at: iso(2, 15), agenda_date: null, priority: 'High', priority_level: null, detected_at: iso(2, 16),
-      validation_disposition: 'Accepted', matched_source_id: 'src-5', is_verified_public_source: false, is_member_signal: false,
+      validation_disposition: 'Accepted', matched_source_id: 'src-5', is_verified_public_source: false, is_member_signal: true,
     },
     {
       id: 9006, title: 'Van Zandt County discusses short-term rental registration', snippet: 'Commissioners requested a draft ordinance for review at a future meeting.',
@@ -313,9 +313,61 @@
     review_note: 'Reviewed for accuracy against the agenda packet; content reads consistent with the source.',
   };
 
+  /* ── V9 review-mirror additions: the rest of the review-state matrix
+     (Approved / Stale / Superseded) and the empty-citation cases —
+     Phase P fixture coverage for the Midnight Watch display-refinement
+     review. Each is a shallow clone of the baseline specimen with only
+     the fields that actually differ overridden, same technique as
+     SECOND_ANALYSIS above. ───────────────────────────────────────── */
+  const APPROVED_ANALYSIS = {
+    ...BASELINE_ANALYSIS,
+    id: 'aaaa1111-0000-0000-0000-000000000003',
+    signal_id: 9002, // the long-title Plano ISD signal — also exercises the mobile compact-title state
+    analysis_version: 2,
+    status: 'Approved for Internal Use',
+    reviewed_by: OTHER_PROFILE.id, reviewed_at: iso(3),
+    approved_by: PROFILE.id, approved_at: iso(1),
+    executive_summary: 'The evidence confirms the FY2027 preliminary budget framework and associated tax-rate discussion are on the Plano ISD board agenda as a discussion item, not yet an adopted rate.',
+    intelligence_priority: 'Medium', human_approved_priority: 'Medium',
+    review_note: 'Approved for internal use — content verified against the posted agenda packet.',
+  };
+  const STALE_ANALYSIS = {
+    ...BASELINE_ANALYSIS,
+    id: 'aaaa1111-0000-0000-0000-000000000004',
+    signal_id: 9003,
+    analysis_version: 1,
+    status: 'Stale',
+    is_stale: true, stale_reason: 'Underlying signal record was updated after this analysis was generated.',
+    reviewed_by: OTHER_PROFILE.id, reviewed_at: iso(20),
+    review_note: 'Marked Stale — the source signal changed after this version was generated.',
+    // No-citation state: an empty array should suppress the whole
+    // Citations heading, not render it with nothing inside.
+    citations: [],
+  };
+  const SUPERSEDED_ANALYSIS = {
+    ...BASELINE_ANALYSIS,
+    id: 'aaaa1111-0000-0000-0000-000000000005',
+    signal_id: 9006,
+    analysis_version: 1,
+    status: 'Superseded',
+    reviewed_by: OTHER_PROFILE.id, reviewed_at: iso(15),
+    review_note: 'Superseded by a later, more complete version.',
+    // Partially-empty citations: the first object has no usable field at
+    // all (must be suppressed on its own), the second is a normal,
+    // usable citation (must still render) — exercises the per-citation
+    // filter, not just the whole-array empty/non-empty case.
+    citations: [
+      { source_id: '', url: '', quote_or_reference: '' },
+      { source_id: 'E1', url: 'https://example.com/vanzandtcounty/agendas/2026-07-20', quote_or_reference: 'Commissioners requested draft ordinance language for a future meeting.' },
+    ],
+  };
+
   const ANALYSES_BY_SIGNAL = {
     9004: [BASELINE_ANALYSIS],
     9001: [SECOND_ANALYSIS],
+    9002: [APPROVED_ANALYSIS],
+    9003: [STALE_ANALYSIS],
+    9006: [SUPERSEDED_ANALYSIS],
   };
 
   const EVIDENCE_PACKET_TEXT = [

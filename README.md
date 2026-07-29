@@ -1,22 +1,18 @@
-# Watchdog EWS — Public Product-Review Mirror (V8)
+# Watchdog EWS — Public Product-Review Mirror (V9 "Midnight Watch")
 
 **DESIGN REVIEW — NOT PRODUCTION.**
 
 This repository is a static, read-only, login-free reproduction of the
-**Watchdog V8 product-simplification pass** of Watchdog EWS ("NTX Policy
-Tracker"), published solely so an outside reviewer can navigate the
-product's screens and layout directly, on a stable public hostname,
-without any relay through screenshots.
+**Watchdog V9 "Midnight Watch" display-refinement pass** of Watchdog EWS
+("NTX Policy Tracker"), published on the `watchdog-v9-midnight-watch-review`
+branch (this repository's `main` branch, which still serves the earlier V8
+review build, is untouched) so an outside reviewer — including an AI
+reviewer — can navigate the corrected interface directly, on a stable
+public hostname, without any relay through screenshots.
 
-This build reflects the `watchdog-v8-product-simplification` branch —
-review semantics corrected, all documented V7.1 Analysis-tab rendering
-defects fixed, Today/Intelligence/Action reorganized around the
-decisions a Government Affairs Director actually needs to make, and
-interface residue (the six-tile metric wall, the Review Progress wall,
-the misleading "Jurisdictions" metric, card-level quick actions, the
-permanent sync banner) removed. See this repository's commit history and
-the private repository's `watchdog-v8-product-simplification` branch for
-the complete change list.
+Start at **`review-index.html`** — it lists every affected page, fixture
+state, and interaction this pass touched, with exact click paths and which
+fixture signal demonstrates which state.
 
 ## Everything here is fabricated or sanitized
 
@@ -38,52 +34,56 @@ the complete change list.
   persists past a page reload, and nothing here can reach any real
   system.
 
-## What changed since the V7.1 baseline mirror
+## What changed since the V8 mirror
 
-The previous version of this mirror deliberately preserved seven
-documented V7.1 rendering defects (empty "Confirmed Facts" bullets, a
-"Not addressed" Why-It-Matters fallback, a truncated Executive Summary,
-`insufficient_evidence` rendering identically to "no organizational
-position established," and others) as a baseline for review. This V8
-build is the corrected product: those defects are fixed here, using the
-same underlying data shapes a real signal_intelligence_analyses row
-actually has — nothing about the fixture data was simplified to make the
-fixes look better than they'd behave on a real saved analysis. Opening a
-signal also no longer marks it "Reviewed" by itself; that now requires
-an explicit "Mark Reviewed" action, reachable from the Action tab.
+This build reflects the private `watchdog-v9-midnight-watch-implementation`
+branch's full Midnight Watch visual identity plus a subsequent
+authenticated-review correction pass: a five-tier rounded-rectangle radius
+system, a cool (no warm yellow/gold/amber/bronze/copper) priority/status
+color system, an individually-bordered rounded primary navigation, a
+System dropdown that closes correctly on outside click/Escape/navigation/
+Account-opening, a 2×2 Status filter group, corrected Today-page spacing,
+a four-state (Connecting/Data Connected/Experiencing Delays/Sync Failed)
+data-status indicator, a flex-column Intelligence Workspace dialog shell
+with a locked background scroll and a compact mobile title state, a
+corrected AI-draft/approved/stale/superseded review-state matrix, empty-
+citation suppression, and a split (not one all-caps sentence) long
+heading. Issue Brief, Analysis, and Action **content** — what Jason called
+"exceptionally strong" — was not simplified, reordered, or regenerated at
+any point in this or the prior pass.
 
 ## What's in this repository
 
-Fourteen static files, built from the reviewed and verified Watchdog V8
-branch, plus this README and an empty `.nojekyll` (so GitHub Pages
-serves the files as-is rather than running them through Jekyll):
-
 - `index.html` — the full application shell, with a visible
-  "DESIGN REVIEW — NOT PRODUCTION" banner and a
-  `<meta name="robots" content="noindex, nofollow">` tag
-- `dashboard.css` — styling, from the real product's V8 branch
+  "DESIGN REVIEW — NOT PRODUCTION" banner, a link to the review index,
+  and a `<meta name="robots" content="noindex, nofollow">` tag
+- `dashboard.css` — styling, from the real product's current V9 branch,
+  plus one small REVIEW-DEMO-ONLY block at the end of the file (clearly
+  commented) styling the fixture-state control panel below
 - `dashboard.js` — the real product's rendering and interaction logic,
   unmodified except for one dead constants block (see the comment at
   the top of the file) that used to hold a live database connection
   string
 - `editFormLogic.js`, `security.js`, `migration.js` — pure logic/DOM
   helper modules, unmodified from the real product
-- `reviewSemantics.js` — new in V8: pure logic distinguishing "viewed" a
-  signal from "reviewed" it (see the file header for the full rule)
-- `analysisRendering.js` — new in V8: pure logic backing every corrected
-  Analysis-tab rendering defect (confirmed facts, evidence gaps, position
-  pathway distinction, executive summary, why-this-matters, recommended
-  next step, governance) — each function documents which V7.1 defect it
-  fixes and why the fix needs no database schema change
+- `reviewSemantics.js`, `analysisRendering.js` — pure logic modules,
+  unmodified from the real product
 - `app-boot.js` — page bootstrap, unmodified from the real product
-- `fixtures.js` — all fabricated data this mirror displays, including a
-  sanitized reconstruction of a real manual-pilot-imported analysis with
-  a full original-response shape (`usage_metadata.raw_imported_response`)
-  so the V8 fixes render exactly as they would against a genuine row
+- `fixtures.js` — all fabricated data this mirror displays; extended in
+  this pass with Approved/Stale/Superseded analysis versions and
+  empty/partially-empty citation cases (previously only Draft/Human
+  Reviewed existed) so the full review-state matrix is directly visible
 - `auth.js`, `repository.js`, `realtime.js` — fixture replacements for
   the real product's Supabase/Netlify-Function-backed equivalents;
-  these are the only three files that differ in *purpose* from
-  production, and they contain no network calls of any kind
+  these are the only files that differ in *purpose* from production,
+  and they contain no network calls of any kind
+- `review-demo.js` — REVIEW DEMO ONLY, new in this pass: adds a small,
+  clearly-labeled floating panel with buttons for the four Data
+  Connected states (the one required state that can't be reached by
+  just seeding fixture data, since it's driven by boot timing rather
+  than content). Not referenced by the private implementation.
+- `review-index.html` — new in this pass: the review index described
+  above.
 - `robots.txt` — disallows all crawling
 
 No production source code, no Netlify Functions, no environment files,

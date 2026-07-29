@@ -1,13 +1,11 @@
 'use strict';
 
-/* ══ WATCHDOG V8 PUBLIC REVIEW MIRROR — no Supabase connection here ══
-   The real constants that normally live in this spot are gone. This
-   mirror's boot() always resolves window.WatchdogAuth.getClient() first
-   (see auth.js in this directory, a fixture), so the line below is dead
-   code kept only so boot()'s existing fallback ternary still parses —
-   it is never reachable and these are not real values of any kind.    */
-const SUPABASE_URL  = 'REVIEW-MIRROR-NO-URL';
-const SUPABASE_ANON = 'REVIEW-MIRROR-NO-KEY';
+/* ══ Supabase connection ══════════════════════════════════════════
+   Publishable (anon) key only — safe for browser use, scoped by
+   Supabase Row Level Security on the `signals` table. No service-role
+   key or write access exists in this file.                          */
+const SUPABASE_URL  = 'https://hoyovnrdwgvotvzaxbla.supabase.co';
+const SUPABASE_ANON = 'sb_publishable_zSDg5rH_nGYlhOK1LpCeGw_7sZ2Labg';
 
 const FOCUS_COUNTIES = ['Collin', 'Hunt', 'Rockwall', 'Van Zandt'];
 
@@ -650,18 +648,35 @@ async function refreshSharedAuditEvents() {
   }
 }
 
-// V8 Part 3: quiet by default. A successful sync shows nothing at all —
-// it no longer competes with the header for attention with a permanent
-// full-width banner. Only a real sync failure becomes visible, and only
-// then, as a compact error indicator.
-function updateSyncBanner(synced) {
+// V9 Midnight Watch Phase E, extended by the correction-pass Phase G: a
+// truthful, compact, always-visible FOUR-state indicator. Never shown (or
+// claimed) merely because the page rendered:
+//   - {state:'connecting'} — required boot dependencies are still actively
+//     loading; neutral, no failure implied.
+//   - {state:'delayed'}    — DATA_STATUS_DELAY_THRESHOLD_MS has elapsed
+//     since boot started and dependencies still haven't all resolved, but
+//     none has explicitly failed yet — see boot()'s delay timer below for
+//     the exact trigger.
+//   - {signalsOk, personalOk, sharedOk} — the boot sequence has finished:
+//     "Data Connected" only once every dependency an operator actually
+//     relies on (signal loading, personal workflow-state loading, shared
+//     collaboration/Policy Matter loading) has genuinely succeeded; a
+//     truthful "Sync Failed" the moment any one of them hasn't.
+// Read-only — no click target, no dropdown, no animation.
+function updateSyncBanner(input) {
   const badge = document.getElementById('connBadge');
   if (!badge) return;
-  badge.hidden = !!synced;
-  if (!synced) {
-    const textEl = document.getElementById('connBadgeText');
-    if (textEl) textEl.textContent = 'Could not sync your workspace — showing signals without your saved decisions';
-  }
+  const textEl = document.getElementById('connBadgeText');
+  const setState = (cls, text) => {
+    badge.hidden = false;
+    badge.classList.remove('is-connecting', 'is-connected', 'is-delayed', 'is-failed');
+    badge.classList.add(cls);
+    if (textEl) textEl.textContent = text;
+  };
+  if (input && input.state === 'connecting') { setState('is-connecting', 'Connecting…'); return; }
+  if (input && input.state === 'delayed') { setState('is-delayed', 'Experiencing Delays'); return; }
+  const allOk = !!(input && input.signalsOk && input.personalOk && input.sharedOk);
+  setState(allOk ? 'is-connected' : 'is-failed', allOk ? 'Data Connected' : 'Sync Failed');
 }
 
 /* Drives the "saved" indicator inside the signal detail dialog
@@ -1220,7 +1235,7 @@ function renderAttentionSummary() {
     // Neutral command-center treatment for ordinary queues; amber only for
     // Action Required; red only for overdue — everything else (including
     // ordinary unreviewed signals) stays low-key (V3.2 §9).
-    const emphasisClass = /overdue/i.test(d.key) ? ' attn-pill-red' : /actionRequired/i.test(d.key) ? ' attn-pill-amber' : '';
+    const emphasisClass = /overdue/i.test(d.key) ? ' attn-pill-red' : /actionRequired/i.test(d.key) ? ' attn-pill-action' : '';
     return `<button type="button" class="attn-pill${emphasisClass}" data-queue="${esc(d.key)}">
       <span class="attn-pill-n">${n}</span>${esc(d.label)}
     </button>`;
@@ -1524,6 +1539,23 @@ function openActivityDialog() {
 }
 
 /* ── Boot ─────────────────────────────────────────────────────── */
+// Last-known personal/shared boot-dependency results, so a signal-load
+// Retry (see loadSignals()'s error state below) can still report a
+// truthful combined Data Connected/Sync Failed status without repeating
+// the personal/shared fetches.
+var lastBootDeps = { personalOk: true, sharedOk: true };
+
+// Correction-pass Phase G: how long the boot sequence may run before the
+// still-nothing-has-failed-yet state changes from "Connecting…" to
+// "Experiencing Delays". This is the one deterministic, documented
+// threshold the ticket asked for — not a network-jitter guess. boot()'s
+// three dependencies (personal workflow state, shared collaboration
+// state, signals) are fetched sequentially below, so a single timer
+// spanning the whole sequence is sufficient and avoids any invasive
+// change to the existing boot architecture: if every dependency resolves
+// before this fires, the timer is cancelled and never shown at all.
+const DATA_STATUS_DELAY_THRESHOLD_MS = 9000;
+
 async function boot(userId, role) {
   if (typeof supabase === 'undefined') {
     renderState('error', 'The Supabase client library failed to load. Check your network connection and reload.');
@@ -1542,21 +1574,34 @@ async function boot(userId, role) {
     window.WatchdogAuth.registerCleanup(clearUserScopedCacheInMemory);
   }
 
+  updateSyncBanner({ state: 'connecting' });
+  let bootDepsResolved = false;
+  const delayTimer = setTimeout(() => {
+    if (!bootDepsResolved) updateSyncBanner({ state: 'delayed' });
+  }, DATA_STATUS_DELAY_THRESHOLD_MS);
+
   const loaded = await loadWorkflowStoreForUser(currentUserId);
   workflowStore = loaded.store;
-  updateSyncBanner(loaded.syncOk && !!currentUserId);
+  const personalOk = loaded.syncOk && !!currentUserId;
 
+  let sharedOk = true;
   try {
     await loadSharedCollaborationState();
   } catch (err) {
     console.error('Could not load shared workspace from Supabase:', err);
     showToast('Could not load the shared workspace — Policy Matters and Shared Coordination may be incomplete. Try reloading.');
+    sharedOk = false;
   }
+
+  lastBootDeps = { personalOk, sharedOk };
 
   applyRolePermissionsToStaticUI();
   populateWorkflowStatusFilter();
   wireControls();
-  await loadSignals();
+  const signalsOk = await loadSignals();
+  bootDepsResolved = true;
+  clearTimeout(delayTimer);
+  updateSyncBanner({ signalsOk, personalOk, sharedOk });
   subscribeToRealtime();
 
   if (currentUserId && window.WatchdogRealtime) {
@@ -1678,7 +1723,7 @@ async function loadSignals() {
       populateMatterFilterOptions();
       renderState('empty');
       updateTimestamps();
-      return;
+      return true;
     }
 
     populateFilterOptions();
@@ -1687,10 +1732,29 @@ async function loadSignals() {
     refreshOverviewPanels();
     renderMain();
     updateTimestamps();
+    return true;
   } catch (err) {
     console.error('Supabase load error:', err);
     renderState('error', err && err.message ? err.message : 'Unknown connection error.');
+    return false;
   }
+}
+
+// Signal-load error state's Retry button (renderState('error')): reruns
+// only the failed dependency, then recombines it with the personal/shared
+// results already known from boot() so Data Connected/Sync Failed stays
+// truthful without re-fetching state that already succeeded. Same
+// Connecting/Experiencing Delays treatment as the initial boot sequence.
+async function retrySignalLoad() {
+  updateSyncBanner({ state: 'connecting' });
+  let resolved = false;
+  const delayTimer = setTimeout(() => {
+    if (!resolved) updateSyncBanner({ state: 'delayed' });
+  }, DATA_STATUS_DELAY_THRESHOLD_MS);
+  const signalsOk = await loadSignals();
+  resolved = true;
+  clearTimeout(delayTimer);
+  updateSyncBanner({ signalsOk, personalOk: lastBootDeps.personalOk, sharedOk: lastBootDeps.sharedOk });
 }
 
 function subscribeToRealtime() {
@@ -1749,6 +1813,11 @@ function wireControls() {
     activeFilters.primaryView = btn.dataset.primary;
     activeFilters.attentionQueue = '';
     mobileFiltersOpen = false; // switching workspaces always returns to the feed, not a stale-open drawer
+    // Correction pass: selecting Today/Intelligence/Active Matters while
+    // System happens to be open must close it too — previously only
+    // selecting a System destination itself did this (see the sysItem
+    // branch above), so System could be left open behind the new view.
+    document.getElementById('systemMenu').open = false;
     renderMain();
   });
 
@@ -1939,6 +2008,14 @@ function wireControls() {
   document.getElementById('detailTabs').addEventListener('click', (e) => {
     const btn = e.target.closest('.detail-tab');
     if (btn) switchDetailTab(btn.dataset.dtab);
+  });
+  // Phase I: compact mobile title state — once the operator has scrolled
+  // past the very top of the content, a long title no longer needs to
+  // stay at full size/full text permanently eating scroll room (see the
+  // .detail-head.is-compact rule in dashboard.css, mobile-only). Reset
+  // to expanded on every openDetail() call.
+  document.getElementById('detailBody').addEventListener('scroll', (e) => {
+    document.getElementById('detailHead').classList.toggle('is-compact', e.target.scrollTop > 24);
   });
   document.getElementById('detailPrimaryActions').addEventListener('click', async (e) => {
     const btn = e.target.closest('[data-detail-action]');
@@ -2183,14 +2260,20 @@ function wireControls() {
     renderMain();
   });
 
-  /* Workspace menu (V3.2 §10 / §15): close on outside click, close on
-     Escape. Native <details> gives neither for free. Card "More" menus
-     (rebuilt on every render, so they already reset when a card's own
-     action fires or the workspace switches — see renderCard) get the
-     same outside-click/Escape treatment for consistency. */
+  /* Workspace menu (V3.2 §10 / §15) AND the System menu (correction pass
+     Phase C — previously only workspaceMenu got this treatment, so
+     System could be left open by an outside click or Escape): close on
+     outside click, close on Escape, with focus returned to the trigger
+     that opened the menu so keyboard users aren't dropped. Native
+     <details> gives none of this for free. Card "More" menus (rebuilt on
+     every render, so they already reset when a card's own action fires
+     or the workspace switches — see renderCard) get the same outside-
+     click/Escape treatment for consistency. */
   document.addEventListener('click', (e) => {
     const menu = document.getElementById('workspaceMenu');
     if (menu.open && !menu.contains(e.target)) menu.open = false;
+    const sysMenu = document.getElementById('systemMenu');
+    if (sysMenu.open && !sysMenu.contains(e.target)) sysMenu.open = false;
     document.querySelectorAll('.card-more[open]').forEach(d => {
       if (!d.contains(e.target)) d.open = false;
     });
@@ -2198,9 +2281,19 @@ function wireControls() {
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
     const menu = document.getElementById('workspaceMenu');
-    if (menu.open) menu.open = false;
+    if (menu.open) { menu.open = false; document.getElementById('accountMenuTrigger').focus(); }
+    const sysMenu = document.getElementById('systemMenu');
+    if (sysMenu.open) { sysMenu.open = false; document.getElementById('systemMenuTrigger').focus(); }
     document.querySelectorAll('.card-more[open]').forEach(d => { d.open = false; });
     closeMobileFilters();
+  });
+  // Account and System are mutually exclusive — opening one closes the
+  // other, so at most one of the header/nav dropdowns is ever open.
+  document.getElementById('workspaceMenu').addEventListener('toggle', (e) => {
+    if (e.target.open) document.getElementById('systemMenu').open = false;
+  });
+  document.getElementById('systemMenu').addEventListener('toggle', (e) => {
+    if (e.target.open) document.getElementById('workspaceMenu').open = false;
   });
 }
 
@@ -2853,7 +2946,7 @@ function renderState(kind, detail) {
     list.innerHTML = `<div class="state error">
       <p>Could not load signal data from Supabase.</p>
       <p class="state-detail">${esc(detail || '')}</p>
-      <button class="state-btn" type="button" onclick="loadSignals()">Retry</button>
+      <button class="state-btn" type="button" onclick="retrySignalLoad()">Retry</button>
     </div>`;
   }
 }
@@ -3249,7 +3342,7 @@ function renderSourceCoverageCard(r) {
     <p class="sig-title">${esc(r.source_name)}</p>
     ${hasVal(r.known_limitations) ? `<p class="sig-snip">${esc(r.known_limitations)}</p>` : ''}
     <div class="sig-meta-row">${chips.join('')}</div>
-    ${isSafeUrl(r.source_url) ? `<p class="sig-meta-row"><a href="${esc(r.source_url)}" target="_blank" rel="noopener noreferrer">${esc(r.canonical_domain || r.source_url)}</a></p>` : ''}
+    ${isSafeUrl(r.source_url) ? `<p class="sig-meta-row"><a class="src-domain" href="${esc(r.source_url)}" target="_blank" rel="noopener noreferrer">${esc(r.canonical_domain || r.source_url)}</a></p>` : ''}
   </div>`;
 }
 
@@ -3430,7 +3523,7 @@ function renderSpecialDistrictCard(r) {
     ${hasVal(dedupJoin(r.municipalities)) ? `<p class="sig-snip">Municipalities: ${esc(dedupJoin(r.municipalities))}</p>` : ''}
     ${hasVal(r.limitations) ? `<p class="sig-snip">${esc(r.limitations)}</p>` : ''}
     <div class="sig-meta-row">${chips.join('')}</div>
-    ${isSafeUrl(r.official_domain) ? `<p class="sig-meta-row"><a href="${esc(r.official_domain)}" target="_blank" rel="noopener noreferrer">${esc(r.official_domain)}</a></p>` : ''}
+    ${isSafeUrl(r.official_domain) ? `<p class="sig-meta-row"><a class="src-domain" href="${esc(r.official_domain)}" target="_blank" rel="noopener noreferrer">${esc(r.official_domain)}</a></p>` : ''}
   </div>`;
 }
 
@@ -4311,12 +4404,20 @@ function intelStatusBadgeClass(status) {
 
 // Every analysis in this codebase originates from an AI provider or the
 // manual ChatGPT pilot — there is no "written from scratch by a human"
-// path — so this label must stay visible for every status EXCEPT
-// Approved for Internal Use, not just Draft (V7.1 hardening-pass fix:
+// path — so this label stays visible for both states that are still
+// awaiting a human approval decision: Draft and Human Reviewed
+// (reviewed is not the same as approved — V7.1 hardening-pass fix,
 // "AI-generated content must remain clearly labeled until human
-// approval," which includes Human Reviewed — reviewed is not approved).
+// approval"). Correction pass, Phase J: previously this also showed on
+// Rejected/Stale/Superseded analyses — a closed, historical disposition
+// isn't "awaiting review" and showing the same warning there
+// contradicted its own already-settled status (e.g. a Superseded
+// analysis that had actually been Approved for Internal Use before a
+// newer version replaced it would misleadingly read as still needing
+// review).
 function aiDraftLabel(analysis) {
-  if (!analysis || !analysis.provider || analysis.status === 'Approved for Internal Use') return '';
+  if (!analysis || !analysis.provider) return '';
+  if (!['Draft', 'Human Reviewed'].includes(analysis.status)) return '';
   return `<span class="ai-draft-label">⚠ AI-generated draft — human review required</span>`;
 }
 
@@ -4419,9 +4520,23 @@ function renderAnalysisTabContent(analysis) {
     <p class="wf-section-heading">Unresolved Questions</p>
     ${factListHtml(AR.unresolvedFactEntries(analysis), 'None recorded.')}
 
-    ${Array.isArray(analysis.citations) && analysis.citations.length ? `
+    ${(() => {
+      // Phase K: a citation is usable only when it actually carries some
+      // supported content (source name, evidence ID, URL, document
+      // title, or a real reference/quote) — never render an empty
+      // "SOURCE:" row with a blank value, and suppress the whole
+      // "Citations" heading if nothing survives the filter, rather than
+      // deciding this once for the whole array up front (a single
+      // partially-empty citation object used to slip through).
+      const usable = (Array.isArray(analysis.citations) ? analysis.citations : []).filter((c) => c && (
+        hasVal(c.source_id) || hasVal(c.evidence_id) || hasVal(c.url) ||
+        hasVal(c.document_title) || hasVal(c.quote_or_reference)
+      ));
+      if (!usable.length) return '';
+      return `
     <p class="wf-section-heading" style="margin-top:14px">Citations</p>
-    <dl class="dl-grid">${analysis.citations.map((c) => dlRow(c.source_id || 'Source', esc(c.quote_or_reference || ''))).join('')}</dl>` : ''}
+    <dl class="dl-grid">${usable.map((c) => dlRow(c.source_id || c.evidence_id || 'Source', esc(c.quote_or_reference || c.document_title || c.url || ''))).join('')}</dl>`;
+    })()}
 
     <section class="wf-section" style="margin-top:14px" aria-label="Governance">
       <p class="wf-section-heading">Governance</p>
@@ -4478,7 +4593,8 @@ function renderActionResponseFromAnalysis(s, wf, analysis) {
 
     <p class="wf-required-hint" style="margin-top:8px">This is a proposal, not an applied action. Nothing here is carried out automatically.</p>
 
-    <p class="wf-section-heading" style="margin-top:14px">Position, Priority &amp; Response — kept separate, never one combined status</p>
+    <p class="wf-section-heading" style="margin-top:14px">Position, Priority &amp; Response</p>
+    <p class="wf-section-subheading">Kept separate—never one combined status.</p>
     <dl class="dl-grid">
       ${dlRow('Position Status', esc(AR.positionPathwayDisplay(analysis).label))}
       ${hasVal(analysis.intelligence_priority) ? dlRow('Intelligence-Assessed Priority', esc(analysis.intelligence_priority)) : ''}
@@ -4507,10 +4623,21 @@ function renderIntelGenControls(s, analysis, allAnalyses) {
     : `<span class="state-detail">No analysis has been saved for this signal yet — see Intelligence Tools above.</span>`;
 
   const aid = analysis ? esc(analysis.id) : '';
+  // Correction pass, Phase J: "Approve for Internal Use" is a state
+  // TRANSITION into the approved state — it must not still appear (as an
+  // apparently-active thing to click) once the analysis is already
+  // there, or the UI reads as "this needs approving" for a version that
+  // was, in fact, already approved. Every other review action is
+  // unaffected — this only removes the one contradictory button. The
+  // Analysis-tab label is "Mark Analysis Reviewed", not "Mark Reviewed",
+  // so it never reads as the same action as the Action tab's signal-
+  // level Mark Reviewed control (renderDetailPrimaryActions) — that is a
+  // separate, unrelated piece of state (wf.reviewedAt) and this pass
+  // does not conflate the two.
   const reviewButtons = (canReview && analysis && !['Rejected', 'Superseded'].includes(analysis.status)) ? `
     <div class="wf-actions">
-      <button type="button" class="wf-tool-btn" data-intel-analysis-id="${aid}" data-intel-review="Human Reviewed">Mark Reviewed</button>
-      <button type="button" class="wf-tool-btn" data-intel-analysis-id="${aid}" data-intel-review="Approved for Internal Use">Approve for Internal Use</button>
+      <button type="button" class="wf-tool-btn" data-intel-analysis-id="${aid}" data-intel-review="Human Reviewed">Mark Analysis Reviewed</button>
+      ${analysis.status !== 'Approved for Internal Use' ? `<button type="button" class="wf-tool-btn" data-intel-analysis-id="${aid}" data-intel-review="Approved for Internal Use">Approve for Internal Use</button>` : ''}
       <button type="button" class="wf-tool-btn" data-intel-analysis-id="${aid}" data-intel-review="Rejected">Reject</button>
       <button type="button" class="wf-tool-btn" data-intel-analysis-id="${aid}" data-intel-review="Stale">Mark Stale</button>
       <button type="button" class="wf-tool-btn" data-intel-analysis-id="${aid}" data-intel-review="Superseded">Supersede</button>
@@ -5023,6 +5150,24 @@ function renderWorkProductsGrid() {
     </div>`).join('');
 }
 
+// Phase I: deterministic background-scroll lock for the Intelligence
+// Workspace dialog — body.modal-open (position:fixed, see dashboard.css)
+// rather than relying on <dialog>'s own modal behavior, which iOS Safari
+// has historically let leak through to the background page. Saves and
+// restores the exact scroll offset so closing the dialog doesn't jump
+// the operator back to the top of whatever list they had scrolled.
+var detailScrollLockY = 0;
+function lockBodyScroll() {
+  detailScrollLockY = window.scrollY || document.documentElement.scrollTop || 0;
+  document.body.classList.add('modal-open');
+  document.body.style.top = `-${detailScrollLockY}px`;
+}
+function unlockBodyScroll() {
+  document.body.classList.remove('modal-open');
+  document.body.style.top = '';
+  window.scrollTo(0, detailScrollLockY);
+}
+
 function openDetail(id) {
   const s = displaySignals.find(x => String(x.id) === String(id));
   if (!s) return;
@@ -5094,11 +5239,14 @@ function openDetail(id) {
   renderSignalMatterLinks(s);
   document.getElementById('wfError').hidden = true;
 
+  document.getElementById('detailHead').classList.remove('is-compact');
   document.getElementById('detailDialog').showModal();
+  lockBodyScroll();
 }
 
 function closeDetail() {
   document.getElementById('detailDialog').close();
+  unlockBodyScroll();
   currentDetailSignal = null;
   sharedCoordLoadedUpdatedAt = null;
 }

@@ -4,11 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<title>Watchdog EWS — DESIGN REVIEW MIRROR (V8, NOT PRODUCTION)</title>
+<title>Watchdog EWS — DESIGN REVIEW MIRROR (V9 Midnight Watch, NOT PRODUCTION)</title>
 <link rel="stylesheet" href="dashboard.css">
 </head>
 <body>
-<div id="reviewMirrorBanner" style="position:sticky;top:0;z-index:9999;background:#7a1f1f;color:#fff;font:600 12.5px/1.4 system-ui,sans-serif;text-align:center;padding:5px 10px;">DESIGN REVIEW (V8) — NOT PRODUCTION — fabricated data only, read-only, no login</div>
+<div id="reviewMirrorBanner" style="position:sticky;top:0;z-index:9999;background:#7a1f1f;color:#fff;font:600 12.5px/1.4 system-ui,sans-serif;text-align:center;padding:5px 10px;">DESIGN REVIEW (V9 "Midnight Watch") — NOT PRODUCTION — fabricated data only, read-only, no login. <a href="review-index.html" style="color:#fff;text-decoration:underline">Review index / fixture-state controls →</a></div>
 
 <!-- ══ Auth gate — shown until requireActiveSession() resolves. No
      protected content, and no dashboard.js boot, happens before this
@@ -47,25 +47,33 @@
      maintenance controls) now lives inside that one menu. ═════════════ -->
 <header class="hdr">
   <div class="hdr-id">
-    <h1>Watchdog EWS</h1>
-    <p class="hdr-instance">North Texas Policy Tracker</p>
+    <span class="hdr-brand-mark" aria-hidden="true"></span>
+    <div class="hdr-id-text">
+      <h1>Watchdog<span class="ews-mark">EWS</span></h1>
+      <p class="hdr-instance">North Texas Policy Tracker</p>
+    </div>
   </div>
   <div class="hdr-status">
-    <!-- Quiet by default (Part 3): only ever unhidden by JS when the
-         personal workspace fails to sync — never shown, and never a
-         "Data Connected" pill, while everything is working normally. -->
-    <span class="conn-badge conn-badge-error" id="connBadge" hidden role="alert"><span class="conn-dot" aria-hidden="true"></span><span id="connBadgeText">Could not sync your workspace</span></span>
+    <!-- Truthful two-state status (Phase E): rendered only once
+         dashboard.js has confirmed every required boot dependency
+         (signal load, personal workflow-state load, shared/Policy
+         Matter load) — see updateSyncBanner() in dashboard.js for the
+         exact condition. Read-only: no click target, no dropdown, no
+         animation. -->
+    <span class="conn-pill" id="connBadge" hidden role="status"><span class="conn-dot" aria-hidden="true"></span><span id="connBadgeText">Data Connected</span></span>
     <details class="workspace-menu" id="workspaceMenu">
       <summary class="wf-tool-btn" id="accountMenuTrigger">Account ▾</summary>
       <div class="workspace-menu-panel">
         <p class="wsm-heading" id="hdrUserDisplay" title="Signed in as">—</p>
         <p class="hdr-meta" id="hdrUserRole">—</p>
         <div class="wsm-divider"></div>
-        <button type="button" class="wf-tool-btn" id="glossaryBtn">Glossary</button>
-        <div class="wsm-divider"></div>
+        <!-- Account menu item order (Phase F): Today's Activity, Glossary,
+             Download Workspace Backup, Sign Out. -->
         <p class="wsm-heading">Today's Activity</p>
         <div id="todaysActivityMini" class="wf-history"></div>
         <button type="button" class="wf-tool-btn" id="viewAllActivityBtn">View All Activity</button>
+        <div class="wsm-divider"></div>
+        <button type="button" class="wf-tool-btn" id="glossaryBtn">Glossary</button>
         <div class="wsm-divider"></div>
         <!-- V8 Part 3: renamed to say exactly what each control does.
              "Import Workspace" is gone entirely — it never worked once
@@ -76,7 +84,6 @@
              NOT reset your synced workflow decisions or shared Policy
              Matters — only a local browser cache of activity-history
              overflow (see resetWorkspace() in dashboard.js). -->
-        <p class="wsm-heading">Personal Backup</p>
         <button class="wf-tool-btn" id="exportBtn" type="button">Download Workspace Backup</button>
         <button class="wf-tool-btn wf-tool-danger" id="resetWorkspaceBtn" type="button">Clear Locally Cached Activity History</button>
         <span class="wf-tool-msg" id="wfToolMsg" role="status" aria-live="polite"></span>
@@ -123,18 +130,24 @@
   <!-- ══ Signal filters ═════════════════════════════════════════════ -->
   <section class="filters-panel" id="signalFiltersPanel" aria-label="Signal filters">
     <button type="button" class="mobile-filters-close" aria-label="Close filters">✕ Close Filters</button>
-    <div class="tabs" id="signalsSubNav" role="tablist" aria-label="Intelligence view">
-      <button class="tab active" role="tab" aria-selected="true" data-sub="queue">Needs Review</button>
-      <button class="tab" role="tab" aria-selected="false" data-sub="monitoring">Monitoring</button>
-      <button class="tab" role="tab" aria-selected="false" data-sub="escalated">Escalated to Matter</button>
-      <button class="tab" role="tab" aria-selected="false" data-sub="all">All</button>
+    <div class="filter-group">
+      <p class="filter-group-label" id="signalsSubNavLabel">Status</p>
+      <div class="tabs" id="signalsSubNav" role="tablist" aria-labelledby="signalsSubNavLabel">
+        <button class="tab" role="tab" aria-selected="false" data-sub="all">All</button>
+        <button class="tab active" role="tab" aria-selected="true" data-sub="queue">Needs Review</button>
+        <button class="tab" role="tab" aria-selected="false" data-sub="monitoring">Monitoring</button>
+        <button class="tab" role="tab" aria-selected="false" data-sub="escalated">Escalated to Matter</button>
+      </div>
     </div>
 
-    <div class="tabs" id="priorityTabs" role="tablist" aria-label="Filter by priority">
-      <button class="tab active" role="tab" aria-selected="true" data-priority="all">All</button>
-      <button class="tab" role="tab" aria-selected="false" data-priority="High">High</button>
-      <button class="tab" role="tab" aria-selected="false" data-priority="Medium">Medium</button>
-      <button class="tab" role="tab" aria-selected="false" data-priority="Monitor">Monitor</button>
+    <div class="filter-group">
+      <p class="filter-group-label" id="priorityTabsLabel">Priority</p>
+      <div class="tabs" id="priorityTabs" role="tablist" aria-labelledby="priorityTabsLabel">
+        <button class="tab active" role="tab" aria-selected="true" data-priority="all">All</button>
+        <button class="tab" role="tab" aria-selected="false" data-priority="High">High</button>
+        <button class="tab" role="tab" aria-selected="false" data-priority="Medium">Medium</button>
+        <button class="tab" role="tab" aria-selected="false" data-priority="Monitor">Monitor</button>
+      </div>
     </div>
 
     <div class="field">
@@ -403,7 +416,7 @@
      (V8 Part 2) until it contains a functioning product — its section
      and code are untouched below, just unreachable from this tab strip. ── -->
 <dialog id="detailDialog" class="detail-dialog" aria-labelledby="detailTitle">
-  <div class="detail-head">
+  <div class="detail-head" id="detailHead">
     <h2 id="detailTitle">Signal detail</h2>
     <button class="detail-close" id="detailClose" type="button" aria-label="Close detail view">✕</button>
   </div>
@@ -827,8 +840,11 @@
 
 </div><!-- /#appRoot -->
 
-<script>window.supabase = { createClient: function () { throw new Error("no supabase in this mirror"); } };</script>
+<!-- REVIEW MIRROR ONLY — fixture data, loaded first so auth.js/repository.js
+     can read window.WATCHDOG_FIXTURES. Not present in the private
+     implementation (Dashboard/app.html has no fixtures.js). -->
 <script src="fixtures.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="security.js"></script>
 <script src="auth.js"></script>
 <script src="repository.js"></script>
@@ -839,5 +855,8 @@
 <script src="analysisRendering.js"></script>
 <script src="dashboard.js"></script>
 <script src="app-boot.js"></script>
+<!-- REVIEW DEMO ONLY — not part of the private implementation, never
+     shipped to production. See review-demo.js's header comment. -->
+<script src="review-demo.js"></script>
 </body>
 </html>
